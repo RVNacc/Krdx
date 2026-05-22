@@ -1,0 +1,22 @@
+name: Deploy to DirectAdmin Host
+
+on:
+  push:
+    branches:
+      - main # اگر نام شاخه اصلی شما master است، این را به master تغییر دهید
+
+jobs:
+  ftp-deploy:
+    name: 🎉 Deploy
+    runs-on: ubuntu-latest
+    steps:
+    - name: 🚚 Get latest code
+      uses: actions/checkout@v3
+      
+    - name: 📂 Sync files
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        server-dir: /domains/yoursite.com/public_html/widget/ # مسیر دقیق پوشه در هاست را اینجا بنویسید
