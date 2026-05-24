@@ -15,6 +15,9 @@ export default function App() {
     itemSummaries: [],
     kardexByItem: {},
     vatRate: 10,
+    negativeStockMode: 'ALLOW',
+    adjustedTxns: {},
+    selectedTafsil: '__ALL__',
   });
 
   const handleAddFile = (file: FileData) => {
@@ -29,8 +32,25 @@ export default function App() {
     setState(s => ({ ...s, step: 'MAP_COLUMNS' }));
   };
 
+  const recalculateAndSetState = (patch: Partial<AppState>) => {
+    setState(s => {
+      const merged = { ...s, ...patch };
+      const { kardexByItem, summaries } = calculateKardex(
+        merged.processedTransactions,
+        merged.vatRate,
+        merged.negativeStockMode,
+        merged.adjustedTxns || {},
+        merged.selectedTafsil
+      );
+      return {
+        ...merged,
+        kardexByItem,
+        itemSummaries: summaries
+      };
+    });
+  };
+
   const handleMappingsComplete = (updatedFiles: FileData[]) => {
-    // Process all files and aggregate into processedTransactions
     const processed: ProcessedTransaction[] = [];
 
     updatedFiles.forEach(file => {
@@ -43,6 +63,8 @@ export default function App() {
         const qtyCol = mapping.quantity;
         const priceCol = mapping.price;
         const priceType = mapping.priceType || 'TOTAL';
+        const tafsilCol = mapping.tafsil;
+        const taxRateCol = mapping.taxRate;
 
         const pDate = parsePersianDate(String(row[dateCol])) || new Date();
         const rawQty = parseFloat(String(row[qtyCol]).replace(/,/g, ''));
@@ -60,6 +82,17 @@ export default function App() {
            totalPrice = priceVal * qty;
         }
 
+        // Extract optional columns
+        const tafsilValue = tafsilCol ? String(row[tafsilCol] || '').trim() : undefined;
+        let customTaxValue: number | undefined = undefined;
+
+        if (taxRateCol && row[taxRateCol] !== undefined) {
+          const parsedTax = parseFloat(String(row[taxRateCol]).replace(/%/g, ''));
+          if (!isNaN(parsedTax)) {
+            customTaxValue = parsedTax;
+          }
+        }
+
         if (qty > 0 || (qty === 0 && row[itemCol])) {
            processed.push({
             id: `${file.id}_${idx}`,
@@ -71,13 +104,21 @@ export default function App() {
             type: file.type,
             quantity: Math.abs(qty),
             unitPrice: Math.abs(unitPrice),
-            totalPrice: Math.abs(totalPrice)
+            totalPrice: Math.abs(totalPrice),
+            tafsil: tafsilValue,
+            taxRate: customTaxValue,
           });
         }
       });
     });
 
-    const { kardexByItem, summaries } = calculateKardex(processed, state.vatRate);
+    const { kardexByItem, summaries } = calculateKardex(
+      processed,
+      state.vatRate,
+      state.negativeStockMode,
+      state.adjustedTxns || {},
+      state.selectedTafsil
+    );
 
     setState(s => ({
       ...s,
@@ -89,11 +130,6 @@ export default function App() {
     }));
   };
 
-  const handleVatChange = (rate: number) => {
-     const { kardexByItem, summaries } = calculateKardex(state.processedTransactions, rate);
-     setState(s => ({ ...s, vatRate: rate, kardexByItem, itemSummaries: summaries }));
-  };
-
   const reset = () => {
     setState({
       step: 'UPLOAD',
@@ -102,6 +138,9 @@ export default function App() {
       itemSummaries: [],
       kardexByItem: {},
       vatRate: state.vatRate,
+      negativeStockMode: 'ALLOW',
+      adjustedTxns: {},
+      selectedTafsil: '__ALL__',
     });
   };
 
@@ -123,7 +162,7 @@ export default function App() {
             <h1 className="font-bold text-gray-800 tracking-tight text-lg">کاردکس‌ساز هوشمند</h1>
           </div>
           {state.step !== 'UPLOAD' && (
-             <button onClick={reset} className="text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors border border-gray-200 px-4 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100">
+             <button onClick={reset} className="text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors border border-gray-200 px-4 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer">
                + ایجاد کاردکس جدید
              </button>
           )}
@@ -133,7 +172,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         
         {/* Stepper */}
-        <div className="w-full max-w-2xl mx-auto mb-12 flex items-center justify-between relative">
+        <div className="w-full max-w-2xl mx-auto mb-10 flex items-center justify-between relative">
           <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-gray-200 -z-10 -translate-y-1/2"></div>
           {steps.map((s, idx) => {
             const isCompleted = idx < currentStepIndex;
@@ -174,7 +213,11 @@ export default function App() {
                kardexByItem={state.kardexByItem} 
                summaries={state.itemSummaries} 
                vatRate={state.vatRate}
-               onVatChange={handleVatChange}
+               negativeStockMode={state.negativeStockMode}
+               selectedTafsil={state.selectedTafsil || '__ALL__'}
+               adjustedTxns={state.adjustedTxns || {}}
+               processedTransactions={state.processedTransactions}
+               onStateChange={(patch) => recalculateAndSetState(patch)}
              />
           )}
         </div>

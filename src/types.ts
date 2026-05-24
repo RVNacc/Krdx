@@ -10,6 +10,8 @@ export interface ColumnMapping {
   quantity: string;
   price: string;
   priceType: 'UNIT' | 'TOTAL';
+  tafsil?: string; // تفصیل مربوط به خریدار یا مشتری یا معین فروش
+  taxRate?: string; // ستون نرخ مالیاتی اختیاری
 }
 
 export interface FileData {
@@ -32,6 +34,8 @@ export interface ProcessedTransaction {
   totalPrice: number;
   rowNumber: number;
   sourceFile: string;
+  tafsil?: string; // مقدار تفصیل استخراج‌شده
+  taxRate?: number; // نرخ مالیاتی استخراج‌شده از این سطر
 }
 
 export interface KardexEntry extends ProcessedTransaction {
@@ -56,6 +60,7 @@ export interface ItemSummary {
   cogs: number;
   grossProfit: number;
   averageUnitCost: number;
+  itemVatRate?: number; // نرخ مالیاتی این کالا
 }
 
 export interface AppState {
@@ -64,5 +69,9 @@ export interface AppState {
   processedTransactions: ProcessedTransaction[];
   itemSummaries: ItemSummary[];
   kardexByItem: Record<string, KardexEntry[]>;
-  vatRate: number;
+  vatRate: number; // نرخ عمومی
+  negativeStockMode: 'ALLOW' | 'ZERO_OUT' | 'ADJUST_INITIAL'; // وضعیت موجودی منفی
+  adjustedTxns?: Record<string, { unitPrice?: number; quantity?: number }>; // مبالغ جایگزین شده توسط کاربر برای هدف‌گذاری
+  selectedTafsil?: string; // فیلتر تفصیل فروش
 }
+
