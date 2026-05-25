@@ -132,6 +132,8 @@ export function calculateKardex(
       cogs: 0,
       grossProfit: 0,
       averageUnitCost: 0,
+      unit: '',
+      itemVatRate: 0,
     });
   }
 
@@ -153,11 +155,20 @@ export function calculateKardex(
         cogs: 0,
         grossProfit: 0,
         averageUnitCost: 0,
+        unit: '',
+        itemVatRate: 0,
       });
     }
 
     const history = kardexByItem[item];
     const summary = summariesMap.get(item)!;
+
+    if (txn.unit && !summary.unit) {
+       summary.unit = txn.unit;
+    }
+    if (txn.taxRate !== undefined && summary.itemVatRate === 0) {
+       summary.itemVatRate = txn.taxRate;
+    }
 
     let previousQty = history.length > 0 ? history[history.length - 1].balanceQuantity : 0;
     let previousTotalCost = history.length > 0 ? history[history.length - 1].balanceTotalCost : 0;

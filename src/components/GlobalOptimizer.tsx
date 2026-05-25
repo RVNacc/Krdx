@@ -152,13 +152,27 @@ export function GlobalOptimizer({
           const taxableRatio = (totalTaxableRev - shiftVal) / totalTaxableRev;
           const exemptRatio = (totalExemptRev + shiftVal) / totalExemptRev;
 
+          // First try to adjust by quantity, then if needed by price
           taxableSales.forEach((tx) => {
-            tx.totalPrice *= taxableRatio;
+            const targetTotal = tx.totalPrice * taxableRatio;
+            if (adjustQuantities) {
+              const newQty = Math.floor((targetTotal / (tx.unitPrice || 1)));
+              if (newQty !== tx.quantity && newQty > 0) {
+                tx.quantity = newQty;
+              }
+            }
+            tx.totalPrice = targetTotal;
             tx.unitPrice = tx.quantity > 0 ? tx.totalPrice / tx.quantity : 0;
-            // we won't mark as affected yet, we let Step 3 finalize it
           });
           exemptSales.forEach((tx) => {
-            tx.totalPrice *= exemptRatio;
+            const targetTotal = tx.totalPrice * exemptRatio;
+            if (adjustQuantities) {
+               const newQty = Math.floor((targetTotal / (tx.unitPrice || 1)));
+               if (newQty !== tx.quantity && newQty > 0) {
+                 tx.quantity = newQty;
+               }
+            }
+            tx.totalPrice = targetTotal;
             tx.unitPrice = tx.quantity > 0 ? tx.totalPrice / tx.quantity : 0;
           });
         }
@@ -199,10 +213,22 @@ export function GlobalOptimizer({
         );
         if (!originalSale) return;
 
-        let newPrice = sale.unitPrice;
         let targetSaleRev = sale.totalPrice * revRatio;
+        
+        // --- PRIORITY 1: Adjust Quantities if requested ---
+        if (adjustQuantities) {
+           if (revRatio !== 1) {
+             const suggestedQty = Math.max(0, Math.floor(targetSaleRev / (originalSale.unitPrice || 1)));
+             if (suggestedQty !== sale.quantity) {
+                 sale.quantity = suggestedQty;
+                 sale.totalPrice = sale.quantity * sale.unitPrice;
+                 // Recompute target sale rev remaining for price adjustment
+                 targetSaleRev = targetSaleRev; 
+             }
+           }
+        }
 
-        // Adjust prices first if allowed
+        // --- PRIORITY 2: Adjust Prices if requested ---
         if (adjustPrices) {
           const baseCostOfThisSale = avgCost;
           const minAllowedPrice =
@@ -236,20 +262,8 @@ export function GlobalOptimizer({
           }
 
           if (desiredPrice !== sale.unitPrice) {
-            newPrice = desiredPrice;
-            sale.unitPrice = newPrice;
-            sale.totalPrice = sale.quantity * newPrice;
-          }
-        }
-
-        // If we still need to adjust quantity and it's enabled
-        if (adjustQuantities && adjustPrices === false) {
-          if (revRatio < 1) {
-            const newQty = Math.floor(sale.quantity * revRatio);
-            if (newQty !== sale.quantity) {
-              sale.quantity = newQty;
-              sale.totalPrice = sale.quantity * sale.unitPrice;
-            }
+            sale.unitPrice = desiredPrice;
+            sale.totalPrice = sale.quantity * desiredPrice;
           }
         }
 

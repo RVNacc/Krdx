@@ -24,6 +24,7 @@ export function MultiColumnMapper({ files, onMappingsComplete }: MultiColumnMapp
       if (!defaultMapping.price && (norm.includes('مبلغ') || norm.includes('فی') || norm.includes('نرخ') || norm.includes('قیمت') || norm.includes('ارزش') || norm.includes('بها'))) defaultMapping.price = col;
       if (!defaultMapping.tafsil && (norm.includes('تفصیل') || norm.includes('خریدار') || norm.includes('مشتری') || norm.includes('بابت') || norm.includes('tafsil') || norm.includes('customer'))) defaultMapping.tafsil = col;
       if (!defaultMapping.taxRate && (norm.includes('مالیات') || norm.includes('ارزش افزوده') || norm.includes('عوارض') || norm.includes('tax') || norm.includes('vat'))) defaultMapping.taxRate = col;
+      if (!defaultMapping.unit && (norm.includes('واحد') || norm.includes('سنجش') || norm.includes('unit'))) defaultMapping.unit = col;
     });
     return defaultMapping;
   };
@@ -121,6 +122,7 @@ export function MultiColumnMapper({ files, onMappingsComplete }: MultiColumnMapp
           {renderSelect('date', 'ستون تاریخ عملیات')}
           {renderSelect('itemName', 'ستون نام / کد کالا')}
           {renderSelect('quantity', 'ستون تعداد / مقدار')}
+          {renderSelect('unit', 'ستون واحد سنجش (اختیاری)')}
           {renderSelect('tafsil', 'ستون تفصیل / مشتری و خریدار (اختیاری)')}
           {renderSelect('taxRate', 'ستون نرخ مالیاتی کالا/سطر (اختیاری)')}
           

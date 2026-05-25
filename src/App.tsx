@@ -14,7 +14,7 @@ export default function App() {
     processedTransactions: [],
     itemSummaries: [],
     kardexByItem: {},
-    vatRate: 10,
+    vatRate: 0,
     negativeStockMode: 'ZERO_OUT',
     adjustedTxns: {},
     selectedTafsil: '__ALL__',
@@ -65,6 +65,7 @@ export default function App() {
         const priceType = mapping.priceType || 'TOTAL';
         const tafsilCol = mapping.tafsil;
         const taxRateCol = mapping.taxRate;
+        const unitCol = mapping.unit;
 
         const pDate = parsePersianDate(String(row[dateCol])) || new Date();
         const rawQty = parseFloat(String(row[qtyCol]).replace(/,/g, ''));
@@ -84,6 +85,8 @@ export default function App() {
 
         // Extract optional columns
         const tafsilValue = tafsilCol ? String(row[tafsilCol] || '').trim() : undefined;
+        const unitValue = unitCol ? String(row[unitCol] || '').trim() : undefined;
+        
         let customTaxValue: number | undefined = undefined;
 
         if (taxRateCol && row[taxRateCol] !== undefined) {
@@ -107,6 +110,7 @@ export default function App() {
             totalPrice: Math.abs(totalPrice),
             tafsil: tafsilValue,
             taxRate: customTaxValue,
+            unit: unitValue,
           });
         }
       });
@@ -137,7 +141,7 @@ export default function App() {
       processedTransactions: [],
       itemSummaries: [],
       kardexByItem: {},
-      vatRate: state.vatRate,
+      vatRate: 0,
       negativeStockMode: 'ZERO_OUT',
       adjustedTxns: {},
       selectedTafsil: '__ALL__',

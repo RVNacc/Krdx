@@ -12,6 +12,7 @@ export interface ColumnMapping {
   priceType: 'UNIT' | 'TOTAL';
   tafsil?: string; // تفصیل مربوط به خریدار یا مشتری یا معین فروش
   taxRate?: string; // ستون نرخ مالیاتی اختیاری
+  unit?: string; // واحد سنجش
 }
 
 export interface FileData {
@@ -36,6 +37,7 @@ export interface ProcessedTransaction {
   sourceFile: string;
   tafsil?: string; // مقدار تفصیل استخراج‌شده
   taxRate?: number; // نرخ مالیاتی استخراج‌شده از این سطر
+  unit?: string; // واحد سنجش
 }
 
 export interface KardexEntry extends ProcessedTransaction {
@@ -61,6 +63,7 @@ export interface ItemSummary {
   grossProfit: number;
   averageUnitCost: number;
   itemVatRate?: number; // نرخ مالیاتی این کالا
+  unit?: string; // واحد سنجش کالا
 }
 
 export interface AppState {

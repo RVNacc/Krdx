@@ -40,6 +40,8 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
           "تراکنش",
           "مشتری/تفصیل",
           "امضا",
+          "نرخ مالیات",
+          "واحد سنجش",
           "تعداد ورودی",
           "ثمن واحد ورودی (ریال)",
           "مبلغ کل ورودی",
@@ -67,6 +69,8 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
           e.type,
           e.tafsil || "-",
           e.sourceFile,
+          e.taxRate !== undefined ? `${e.taxRate}%` : "-",
+          e.unit || "-",
           isIncoming ? e.quantity : "",
           isIncoming ? e.unitPrice : "",
           isIncoming ? e.totalPrice : "",
@@ -190,7 +194,7 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
                       {isIncoming ? (
                         <div className="flex flex-col gap-0.5 items-center">
                           <span className="font-bold text-indigo-700 font-mono text-[11px]">
-                            {formatNumber(entry.quantity)} عدد
+                            {formatNumber(entry.quantity)} {entry.unit || "عدد"}
                           </span>
                           <span className="text-[10px] text-gray-500">
                             فی: {formatNumber(entry.unitPrice)}
@@ -206,11 +210,16 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
                       {isOutgoing ? (
                         <div className="flex flex-col gap-0.5 items-center">
                           <span className="font-bold text-rose-700 font-mono text-[11px]">
-                            {formatNumber(entry.quantity)} عدد
+                            {formatNumber(entry.quantity)} {entry.unit || "عدد"}
                           </span>
                           <span className="text-[10px] text-gray-500">
                             فی: {formatNumber(entry.unitPrice)}
                           </span>
+                          {entry.taxRate !== undefined && (
+                             <span className="text-[9px] text-purple-600 bg-purple-50 px-1 rounded-sm mt-0.5">
+                               مالیات: {entry.taxRate}%
+                             </span>
+                          )}
                         </div>
                       ) : (
                         <div className="text-center text-gray-300">-</div>
@@ -223,7 +232,7 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
                         <span
                           className={`font-bold font-mono text-[11px] ${entry.balanceQuantity < 0 ? "text-rose-600 bg-rose-100 px-1 rounded" : "text-emerald-700"}`}
                         >
-                          {formatNumber(entry.balanceQuantity)} عدد
+                          {formatNumber(entry.balanceQuantity)} {entry.unit || "عدد"}
                         </span>
                         <span className="text-[10px] text-gray-500">
                           ارزش:{" "}

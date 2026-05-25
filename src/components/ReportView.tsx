@@ -186,10 +186,13 @@ export function ReportView({
     import("../lib/utils").then(({ exportToCsv }) => {
       const rows = [
         [
+          "کالا",
           "تاریخ",
           "تراکنش",
           "مشتری/تفصیل",
           "امضا",
+          "نرخ مالیات",
+          "واحد سنجش",
           "تعداد ورودی",
           "ثمن واحد ورودی (ریال)",
           "مبلغ کل ورودی",
@@ -210,12 +213,15 @@ export function ReportView({
         const isOutgoing = e.type === "SALE" || e.type === "PURCHASE_RETURN";
 
         rows.push([
+          e.itemName,
           typeof e.date === "string"
             ? e.date
             : e.date.toLocaleDateString("fa-IR"),
           e.type,
           e.tafsil || "-",
           e.sourceFile,
+          e.taxRate !== undefined ? `${e.taxRate}%` : "-",
+          e.unit || "-",
           isIncoming ? e.quantity : "",
           isIncoming ? e.unitPrice : "",
           isIncoming ? e.totalPrice : "",
@@ -321,19 +327,6 @@ export function ReportView({
       {/* Auxiliary Settings Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-gray-100 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700">
         <div className="flex flex-wrap items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span>نرخ ارزش افزوده عمومی:</span>
-            <input
-              type="number"
-              value={vatRate}
-              onChange={(e) =>
-                onStateChange({ vatRate: Number(e.target.value) })
-              }
-              className="w-16 p-1 border border-gray-300 rounded bg-white text-center text-xs font-mono focus:outline-none focus:border-emerald-500"
-            />
-            <span>%</span>
-          </div>
-
           <div className="flex items-center gap-1.5">
             <span>موجودی منفی:</span>
             {negativeStockMode === "ALLOW" && (
@@ -639,7 +632,7 @@ export function ReportView({
                         </td>
 
                         {/* Qty Handling / Inputs */}
-                        <td className="p-4 text-emerald-600 font-mono font-bold">
+                        <td className="p-4 text-emerald-600 font-mono font-bold flex flex-col items-end gap-1">
                           {isBeingEdited ? (
                             <input
                               type="number"
@@ -650,7 +643,10 @@ export function ReportView({
                               className="p-1 border border-gray-300 rounded font-mono text-xs w-16 text-center"
                             />
                           ) : isIncoming ? (
-                            formatNumber(entry.quantity)
+                            <>
+                              <span>{formatNumber(entry.quantity)} {entry.unit || "عدد"}</span>
+                              {entry.taxRate !== undefined && <span className="text-[9px] text-purple-600 bg-purple-50 px-1 rounded-sm">مالیات: {entry.taxRate}%</span>}
+                            </>
                           ) : (
                             "—"
                           )}
@@ -666,14 +662,17 @@ export function ReportView({
                               className="p-1 border border-gray-300 rounded font-mono text-xs w-16 text-center"
                             />
                           ) : isOutgoing ? (
-                            formatNumber(entry.quantity)
+                            <div className="flex flex-col items-end gap-1">
+                              <span>{formatNumber(entry.quantity)} {entry.unit || "عدد"}</span>
+                              {entry.taxRate !== undefined && <span className="text-[9px] text-purple-600 bg-purple-50 px-1 rounded-sm">مالیات: {entry.taxRate}%</span>}
+                            </div>
                           ) : (
                             "—"
                           )}
                         </td>
 
                         <td className="p-4 font-mono font-bold text-gray-900 bg-gray-50/50">
-                          {formatNumber(entry.balanceQuantity)}
+                          {formatNumber(entry.balanceQuantity)} {entry.unit || "عدد"}
                         </td>
 
                         {/* Unit Price Input */}
