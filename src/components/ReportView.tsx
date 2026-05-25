@@ -136,6 +136,48 @@ export function ReportView({
     onStateChange({ adjustedTxns: {} });
   };
 
+  const handleApplyTarget = (newPrice: number) => {
+    const copy = { ...adjustedTxns };
+    history.forEach(entry => {
+      if (entry.type === 'SALE') {
+        copy[entry.id] = {
+          ...copy[entry.id],
+          unitPrice: newPrice
+        };
+      }
+    });
+    onStateChange({ adjustedTxns: copy });
+    setActiveTab('KARDEX');
+  };
+
+  const exportCurrentKardex = () => {
+    import('../lib/utils').then(({ exportToCsv }) => {
+      const rows = [['تاریخ', 'تراکنش', 'مشتری/تفصیل', 'امضا', 'تعداد ورودی', 'ثمن واحد ورودی (ریال)', 'مبلغ کل ورودی', 'تعداد خروجی', 'ثمن واحد خروجی (ریال)', 'مبلغ کل خروجی', 'بهای فروش (خروجی)', 'موجودی', 'ارزش کل موجودی', 'بهای میانگین']];
+      history.forEach(e => {
+        const isIncoming = e.type === 'INITIAL' || e.type === 'PURCHASE' || e.type === 'SALE_RETURN';
+        const isOutgoing = e.type === 'SALE' || e.type === 'PURCHASE_RETURN';
+        
+        rows.push([
+          typeof e.date === 'string' ? e.date : e.date.toLocaleDateString('fa-IR'),
+          e.type,
+          e.tafsil || '-',
+          e.sourceFile,
+          isIncoming ? e.quantity : '',
+          isIncoming ? e.unitPrice : '',
+          isIncoming ? e.totalPrice : '',
+          isOutgoing ? e.quantity : '',
+          isOutgoing ? e.unitPrice : '',
+          isOutgoing ? e.totalPrice : '',
+          isOutgoing && e.type === 'SALE' ? e.cogs : '',
+          e.balanceQuantity,
+          e.balanceTotalCost,
+          e.averageUnitCost
+        ]);
+      });
+      exportToCsv(`kardex_${selectedItem}.csv`, rows);
+    });
+  };
+
   const hasAnyAdjustments = Object.keys(adjustedTxns).length > 0;
 
   return (
@@ -238,10 +280,28 @@ export function ReportView({
             onClick={clearAllAdjustments}
             className="flex items-center gap-1 px-2.5 py-1 text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 transition-colors"
           >
-            <RefreshCw className="w-3 h-3 animate-spin" />
-            حذف تمام نرخ‌های جایگزین ({Object.keys(adjustedTxns).length})
+            <RefreshCw className="w-3 h-3" />
+            حذف تمام تغییرات
           </button>
         )}
+
+        {/* Global Export Buttons */}
+        <div className="flex items-center gap-2 mr-auto" dir="ltr">
+          <button
+            onClick={() => {
+              import('../lib/utils').then(({ exportToCsv }) => {
+                const rows = [['نام کالا', 'موجودی اولیه', 'ارزش اولیه', 'تعداد خرید', 'ارزش خرید', 'تعداد فروش', 'درآمد فروش', 'موجودی پایان', 'ارزش پایان', 'بهای تمام شده فروش', 'سود ناخالص', 'میانگین موزون بها']];
+                summaries.forEach(s => {
+                  rows.push([s.itemName, s.initialQuantity, s.initialValue, s.purchasedQuantity, s.purchasedValue, s.soldQuantity, s.salesRevenue, s.endingQuantity, s.endingValue, s.cogs, s.grossProfit, s.averageUnitCost]);
+                });
+                exportToCsv('sud_zian_summary.csv', rows);
+              });
+            }}
+            className="flex items-center gap-1 px-3 py-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors whitespace-nowrap text-xs shadow-sm font-bold"
+          >
+            دانلود گزارش سود و زیان تجمیعی (CSV)
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -440,30 +500,39 @@ export function ReportView({
               </tbody>
             </table>
             
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50/50">
-                <span className="text-xs text-gray-500 font-medium">
-                  نمایش {(currentPage - 1) * rowsPerPage + 1} تا {Math.min(currentPage * rowsPerPage, history.length)} از {history.length} تراکنش
-                </span>
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    قبلی
-                  </button>
-                  <span className="text-xs font-bold text-gray-600 px-2">صفحه {currentPage} از {totalPages}</span>
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    بعدی
-                  </button>
+            <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50/50">
+              <button 
+                onClick={exportCurrentKardex}
+                className="px-4 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors shadow-sm"
+              >
+                دانلود این کاردکس در اکسل (CSV)
+              </button>
+
+              {totalPages > 1 && (
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-500 font-medium">
+                    نمایش {(currentPage - 1) * rowsPerPage + 1} تا {Math.min(currentPage * rowsPerPage, history.length)} از {history.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      قبلی
+                    </button>
+                    <span className="text-xs font-bold text-gray-600 px-2">صفحه {currentPage} از {totalPages}</span>
+                    <button 
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      بعدی
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
@@ -593,7 +662,7 @@ export function ReportView({
 
         {/* TAB 4: ADVANCED VALUE SIMULATOR */}
         {activeTab === 'TARGET' && currentSummary && (
-          <TargetSimulator summary={currentSummary} />
+          <TargetSimulator summary={currentSummary} onApplyTarget={handleApplyTarget} />
         )}
 
       </div>

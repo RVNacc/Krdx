@@ -191,7 +191,14 @@ export function calculateKardex(
         balanceTotalCost += txnTotalPrice;
       }
       
-      averageUnitCost = balanceQuantity > 0 ? balanceTotalCost / balanceQuantity : 0;
+      if (balanceQuantity > 0) {
+        averageUnitCost = balanceTotalCost / balanceQuantity;
+      } else if (balanceQuantity === 0) {
+        // preserve the previous averageUnitCost
+        balanceTotalCost = 0;
+      } else {
+        // negative stock, keep the old average unit cost, total cost might go negative based on standard logic
+      }
 
       if (txn.type === 'INITIAL') {
         summary.initialQuantity += txnQty;
@@ -229,12 +236,12 @@ export function calculateKardex(
       }
     }
 
-    // Safety checks for float limits
-    balanceTotalCost = Math.max(0, balanceTotalCost);
-    if (balanceQuantity <= 0) {
+    // Fix float precision issues around zero
+    if (Math.abs(balanceQuantity) < 1e-6) {
       balanceQuantity = 0;
+    }
+    if (balanceQuantity === 0) {
       balanceTotalCost = 0;
-      averageUnitCost = 0;
     }
 
     const entry: KardexEntry = {

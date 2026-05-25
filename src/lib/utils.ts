@@ -111,3 +111,33 @@ export function parsePersianDate(dateString: any): Date | null {
 
     return new Date();
 }
+
+export function exportToCsv(filename: string, rows: any[][]) {
+  const processRow = (row: any[]) => {
+    return row.map(val => {
+      if (val === null || val === undefined) return '';
+      let str = String(val);
+      // Escape quotes
+      if (str.includes('"')) {
+        str = str.replace(/"/g, '""');
+      }
+      str = `"${str}"`;
+      return str;
+    }).join(',');
+  };
+
+  const csvContent = "\uFEFF" + rows.map(processRow).join('\n'); // Add BOM for UTF-8 Excel support
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  
+  const link = document.createElement('a');
+  if (link.download !== undefined) {
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+}

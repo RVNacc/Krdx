@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { ItemSummary } from '../types';
 import { formatCurrency, formatNumber } from '../lib/utils';
-import { Calculator, Percent, ArrowLeftRight, TrendingUp } from 'lucide-react';
+import { Calculator, ArrowLeftRight, TrendingUp, Check } from 'lucide-react';
 
 interface TargetSimulatorProps {
   summary: ItemSummary;
+  onApplyTarget: (newPrice: number) => void;
 }
 
-export function TargetSimulator({ summary }: TargetSimulatorProps) {
+export function TargetSimulator({ summary, onApplyTarget }: TargetSimulatorProps) {
   // Goal Types:
   // FIND_PRICE_BY_PROFIT_PCT: Find selling price based on percentage profit relative to cost
   // FIND_PRICE_BY_VAL: Find selling price based on exact target profit value
@@ -152,9 +153,17 @@ export function TargetSimulator({ summary }: TargetSimulatorProps) {
 
           {targetType === 'FIND_PRICE_BY_PCT' && (
             <div className="flex flex-col gap-3 p-5 bg-white border border-gray-200 rounded-2xl shadow-sm">
-              <div className="flex justify-between text-sm font-bold text-gray-700">
-                <span>درصد سود هدف روی بهای تمام شده</span>
-                <span className="font-mono text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-100">{targetProfitPercent} %</span>
+              <div className="flex justify-between items-center text-sm font-bold text-gray-700">
+                <span>مقدار دقیق درصد سود هدف</span>
+                <input 
+                  type="number"
+                  min="1"
+                  max="1000"
+                  step="0.5"
+                  value={targetProfitPercent}
+                  onChange={e => setTargetProfitPercent(Number(e.target.value))}
+                  className="w-24 p-2 shadow-inner bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-emerald-500 font-mono text-center font-bold text-emerald-700"
+                />
               </div>
               <input 
                 type="range"
@@ -162,11 +171,11 @@ export function TargetSimulator({ summary }: TargetSimulatorProps) {
                 max="200"
                 value={targetProfitPercent}
                 onChange={e => setTargetProfitPercent(Number(e.target.value))}
-                className="w-full accent-emerald-600 cursor-pointer h-2 bg-gray-200 rounded-lg appearance-none"
+                className="w-full accent-emerald-600 cursor-pointer h-2 bg-gray-200 rounded-lg appearance-none mt-2"
               />
               <div className="flex justify-between text-xs text-gray-400">
-                <span>۱ % (حداقل)</span>
-                <span>۲۰۰ % (حداکثر سود مارجین)</span>
+                <span>٪ ۱</span>
+                <span>٪ ۲۰۰</span>
               </div>
             </div>
           )}
@@ -240,6 +249,14 @@ export function TargetSimulator({ summary }: TargetSimulatorProps) {
             </div>
 
           </div>
+
+          <button 
+            onClick={() => onApplyTarget(simulatedPricePerUnit)}
+            className="w-full mt-4 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-xl transition-colors shadow flex items-center justify-center gap-2"
+          >
+            <Check className="w-4 h-4" />
+            اعمال این نرخ برای تمام فروش‌های {summary.itemName} در کاردکس
+          </button>
 
           <p className="text-[10px] text-slate-400 text-center leading-relaxed mt-2 pt-2 border-t border-slate-800/50">
              * فرمول بهای تمام شده: (فی میانگین موزون × تعداد). درصد سود/بها نشان‌دهنده راندمان سرمایه کالا و سود/فروش معادل حاشیه سود نهایی ناخالص از درآمد کلی است.
