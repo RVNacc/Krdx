@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { KardexEntry, ItemSummary, ProcessedTransaction } from '../types';
 import { formatNumber, formatCurrency } from '../lib/utils';
 import { TargetSimulator } from './TargetSimulator';
+import { GlobalOptimizer } from './GlobalOptimizer';
 import { 
   AlertTriangle, 
   Layers, 
@@ -40,7 +41,7 @@ export function ReportView({
 }: ReportViewProps) {
   
   const [selectedItem, setSelectedItem] = useState<string>(summaries[0]?.itemName || '');
-  const [activeTab, setActiveTab] = useState<'KARDEX' | 'SUMMARY' | 'TAX_REPORT' | 'TARGET'>('KARDEX');
+  const [activeTab, setActiveTab] = useState<'KARDEX' | 'SUMMARY' | 'TAX_REPORT' | 'TARGET' | 'OPTIMIZER'>('KARDEX');
 
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 50;
@@ -301,6 +302,35 @@ export function ReportView({
           >
             دانلود گزارش سود و زیان تجمیعی (CSV)
           </button>
+          <button
+            onClick={() => {
+              import('../lib/utils').then(({ exportToCsv }) => {
+                const rows = [['نام کالا', 'شناسه', 'تاریخ', 'تفصیل/خریدار', 'تعداد فروش', 'فی فروش', 'درآمد فروش (ریال)', 'ارزش افزوده', 'بهای تمام شده', 'سود ناخالص']];
+                Object.values(kardexByItem).forEach(history => {
+                  history.forEach(tx => {
+                    if (tx.type === 'SALE') {
+                      rows.push([
+                        tx.itemName,
+                        `#${tx.id.split('_')[1] || tx.id}`,
+                        typeof tx.date === 'string' ? tx.date : tx.date.toLocaleDateString('fa-IR'),
+                        tx.tafsil || '-',
+                        tx.quantity,
+                        tx.unitPrice,
+                        tx.totalPrice,
+                        tx.vat,
+                        tx.cogs,
+                        tx.profit
+                      ]);
+                    }
+                  });
+                });
+                exportToCsv('final_sales_invoices.csv', rows);
+              });
+            }}
+            className="flex items-center gap-1 px-3 py-1.5 text-indigo-700 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors whitespace-nowrap text-xs shadow-sm font-bold"
+          >
+            دانلود فاکتورهای فروش نهایی (CSV)
+          </button>
         </div>
       </div>
 
@@ -326,9 +356,15 @@ export function ReportView({
         </button>
         <button 
           onClick={() => setActiveTab('TARGET')} 
-          className={`px-6 py-3 font-bold text-sm transition-colors ${activeTab === 'TARGET' ? 'border-b-2 border-emerald-600 text-emerald-800 bg-white/40' : 'text-gray-500 hover:text-gray-850'}`}
+          className={`px-6 py-3 font-bold text-sm transition-colors tabular-nums ${activeTab === 'TARGET' ? 'border-b-2 border-emerald-600 text-emerald-800 bg-white/40' : 'text-gray-500 hover:text-gray-850'}`}
         >
           سودآور‌ی و تخمین اهداف (Simulator)
+        </button>
+        <button 
+          onClick={() => setActiveTab('OPTIMIZER')} 
+          className={`px-6 py-3 font-bold text-sm transition-colors ${activeTab === 'OPTIMIZER' ? 'border-b-2 border-indigo-600 text-indigo-800 bg-white/40' : 'text-gray-500 hover:text-gray-850'}`}
+        >
+          تنظیمات پیشرفته هوش کاردکس
         </button>
       </div>
 
@@ -663,6 +699,18 @@ export function ReportView({
         {/* TAB 4: ADVANCED VALUE SIMULATOR */}
         {activeTab === 'TARGET' && currentSummary && (
           <TargetSimulator summary={currentSummary} onApplyTarget={handleApplyTarget} />
+        )}
+
+        {/* TAB 5: GLOBAL OPTIMIZER */}
+        {activeTab === 'OPTIMIZER' && (
+          <GlobalOptimizer 
+             kardexByItem={kardexByItem}
+             summaries={summaries}
+             vatRate={vatRate}
+             adjustedTxns={adjustedTxns}
+             processedTransactions={processedTransactions}
+             onStateChange={onStateChange}
+          />
         )}
 
       </div>
