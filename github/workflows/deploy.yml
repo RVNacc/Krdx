@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ] # نام برنچ اصلی خود را اینجا ست کنید (مثلا main یا master)
 
 permissions:
   contents: read
@@ -22,27 +22,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+        
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
           cache: npm
-
+          
       - name: Install dependencies
-        run: npm install
-
+        run: npm ci
+        
       - name: Build
         run: npm run build
-
+        
       - name: Setup Pages
         uses: actions/configure-pages@v4
-
+        
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
-
+          path: './dist' # پوشه خروجی بیلد وب اپلیکیشن
+          
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
