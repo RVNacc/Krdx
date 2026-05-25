@@ -32,6 +32,7 @@ export function GlobalOptimizer({
   
   const [minProfitMargin, setMinProfitMargin] = useState<number>(5);
   const [maxProfitMargin, setMaxProfitMargin] = useState<number>(30);
+  const [targetProfitPercent, setTargetProfitPercent] = useState<number | ''>('');
   const [roundingLevel, setRoundingLevel] = useState<number>(1); // 1 = none, 1000 = nearest thousand
 
   const [isRunning, setIsRunning] = useState(false);
@@ -140,7 +141,7 @@ export function GlobalOptimizer({
            let newPrice = sale.unitPrice;
            let targetSaleRev = sale.totalPrice * revRatio;
 
-           // Adjust prices first if allowed
+            // Adjust prices first if allowed
            if (adjustPrices) {
              const baseCostOfThisSale = avgCost;
              const minAllowedPrice = minProfitMargin > 0 ? baseCostOfThisSale * (1 + minProfitMargin/100) : baseCostOfThisSale;
@@ -148,7 +149,12 @@ export function GlobalOptimizer({
              
              let desiredPrice = sale.quantity > 0 ? targetSaleRev / sale.quantity : sale.unitPrice;
              
-             // Cap price to margins
+             // Override if specific target profit % is specified
+             if (targetProfitPercent !== '') {
+               desiredPrice = baseCostOfThisSale * (1 + (Number(targetProfitPercent) / 100));
+             }
+             
+             // Cap price to margins unless a specific target is set (limits still technically apply if they are strict limits)
              if (desiredPrice < minAllowedPrice && avgCost > 0) desiredPrice = minAllowedPrice;
              if (desiredPrice > maxAllowedPrice && avgCost > 0) desiredPrice = maxAllowedPrice;
              
@@ -260,6 +266,22 @@ export function GlobalOptimizer({
                     className="flex-1 p-2.5 border border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:border-indigo-500"
                   />
                   <span className="text-xs text-gray-400">ریال</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5 pt-3 border-t border-gray-100">
+                <label className="text-xs font-bold text-gray-500">
+                  درصد سود هدف روی بهای تمام شده (تثبیت حاشیه کل)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={targetProfitPercent}
+                    onChange={e => setTargetProfitPercent(Number(e.target.value))}
+                    placeholder="مثال: 20"
+                    className="w-32 p-2.5 border border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:border-emerald-500 bg-emerald-50/30"
+                  />
+                  <span className="text-xs text-gray-400">% (در صورت تعیین، این درصد با احتساب حفظ موجودی اعمال می‌شود)</span>
                 </div>
               </div>
             </div>

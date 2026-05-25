@@ -15,7 +15,7 @@ export default function App() {
     itemSummaries: [],
     kardexByItem: {},
     vatRate: 10,
-    negativeStockMode: 'ALLOW',
+    negativeStockMode: 'ZERO_OUT',
     adjustedTxns: {},
     selectedTafsil: '__ALL__',
   });
@@ -138,7 +138,7 @@ export default function App() {
       itemSummaries: [],
       kardexByItem: {},
       vatRate: state.vatRate,
-      negativeStockMode: 'ALLOW',
+      negativeStockMode: 'ZERO_OUT',
       adjustedTxns: {},
       selectedTafsil: '__ALL__',
     });

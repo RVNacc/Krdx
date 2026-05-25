@@ -291,6 +291,39 @@ export function ReportView({
           <button
             onClick={() => {
               import('../lib/utils').then(({ exportToCsv }) => {
+                const rows = [['نام کالا', 'تاریخ', 'تراکنش', 'مشتری/تفصیل', 'تعداد ورودی', 'فی ورودی', 'مبلغ ورودی', 'تعداد خروجی', 'فی خروجی', 'مبلغ خروجی', 'بهای فروش (خروجی)', 'موجودی', 'ارزش کل موجودی', 'بهای میانگین']];
+                Object.values(kardexByItem).forEach(history => {
+                  history.forEach(e => {
+                    const isIncoming = e.type === 'INITIAL' || e.type === 'PURCHASE' || e.type === 'SALE_RETURN';
+                    const isOutgoing = e.type === 'SALE' || e.type === 'PURCHASE_RETURN';
+                    rows.push([
+                      e.itemName,
+                      typeof e.date === 'string' ? e.date : e.date.toLocaleDateString('fa-IR'),
+                      e.type,
+                      e.tafsil || '-',
+                      isIncoming ? e.quantity : '',
+                      isIncoming ? e.unitPrice : '',
+                      isIncoming ? e.totalPrice : '',
+                      isOutgoing ? e.quantity : '',
+                      isOutgoing ? e.unitPrice : '',
+                      isOutgoing ? e.totalPrice : '',
+                      isOutgoing && e.type === 'SALE' ? e.cogs : '',
+                      e.balanceQuantity,
+                      e.balanceTotalCost,
+                      e.averageUnitCost
+                    ]);
+                  });
+                });
+                exportToCsv('global_kardex_adjusted.csv', rows);
+              });
+            }}
+            className="flex items-center gap-1 px-3 py-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors whitespace-nowrap text-xs shadow-sm font-bold"
+          >
+            دانلود کاردکس کل تمامی کالاها (CSV)
+          </button>
+          <button
+            onClick={() => {
+              import('../lib/utils').then(({ exportToCsv }) => {
                 const rows = [['نام کالا', 'موجودی اولیه', 'ارزش اولیه', 'تعداد خرید', 'ارزش خرید', 'تعداد فروش', 'درآمد فروش', 'موجودی پایان', 'ارزش پایان', 'بهای تمام شده فروش', 'سود ناخالص', 'میانگین موزون بها']];
                 summaries.forEach(s => {
                   rows.push([s.itemName, s.initialQuantity, s.initialValue, s.purchasedQuantity, s.purchasedValue, s.soldQuantity, s.salesRevenue, s.endingQuantity, s.endingValue, s.cogs, s.grossProfit, s.averageUnitCost]);
