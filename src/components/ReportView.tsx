@@ -42,6 +42,9 @@ export function ReportView({
   const [selectedItem, setSelectedItem] = useState<string>(summaries[0]?.itemName || '');
   const [activeTab, setActiveTab] = useState<'KARDEX' | 'SUMMARY' | 'TAX_REPORT' | 'TARGET'>('KARDEX');
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 50;
+
   // Inline pricing edits state
   const [editingTxnId, setEditingTxnId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState<number>(0);
@@ -49,6 +52,13 @@ export function ReportView({
 
   const history = selectedItem ? kardexByItem[selectedItem] || [] : [];
   const currentSummary = summaries.find(s => s.itemName === selectedItem);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedItem, activeTab, selectedTafsil, negativeStockMode]);
+
+  const totalPages = Math.max(1, Math.ceil(history.length / rowsPerPage));
+  const paginatedHistory = history.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   // Extract all Tafsils available (Buyers) across sales
   const allTafsils = useMemo(() => {
@@ -286,13 +296,13 @@ export function ReportView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-xs">
-                {history.length === 0 ? (
+                {paginatedHistory.length === 0 ? (
                   <tr>
                     <td colSpan={12} className="p-12 text-center text-gray-400 font-medium">
                       تراکنشی یافت نشد. لطفا مطمئن شوید فایل‌ها به درستی جفت شده باشند.
                     </td>
                   </tr>
-                ) : history.map((entry, idx) => {
+                ) : paginatedHistory.map((entry, idx) => {
                   const isIncoming = entry.type === 'INITIAL' || entry.type === 'PURCHASE' || entry.type === 'SALE_RETURN';
                   const isOutgoing = entry.type === 'SALE' || entry.type === 'PURCHASE_RETURN';
                   const isEdited = adjustedTxns[entry.id] !== undefined;
@@ -429,6 +439,31 @@ export function ReportView({
                 })}
               </tbody>
             </table>
+            
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between p-4 border-t border-gray-100 bg-gray-50/50">
+                <span className="text-xs text-gray-500 font-medium">
+                  نمایش {(currentPage - 1) * rowsPerPage + 1} تا {Math.min(currentPage * rowsPerPage, history.length)} از {history.length} تراکنش
+                </span>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    قبلی
+                  </button>
+                  <span className="text-xs font-bold text-gray-600 px-2">صفحه {currentPage} از {totalPages}</span>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    بعدی
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
