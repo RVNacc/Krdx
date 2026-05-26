@@ -167,13 +167,16 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
               <th className="p-3 px-4 border-b border-gray-200 font-bold text-gray-700 w-[10%]">
                 بهای فروش
               </th>
+              <th className="p-3 px-4 border-b border-gray-200 font-bold text-gray-700 w-[12%] bg-indigo-50/40">
+                جمع کل (فروش + مالیات)
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 text-xs block w-full overflow-y-auto">
             {paginatedHistory.length === 0 ? (
               <tr className="table w-full table-layout-fixed">
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="p-12 text-center text-gray-400 font-medium"
                 >
                   تراکنشی یافت نشد.
@@ -290,10 +293,20 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
                       </span>
                     </td>
 
-                    <td className="p-3 whitespace-nowrap w-[10%]">
+                    <td className="p-3 whitespace-nowrap w-[10%] border-l border-gray-100">
                       {isOutgoing && entry.type === "SALE" && entry.cogs ? (
                         <span className="font-mono text-amber-700 text-[11px] font-bold">
                           {formatCurrency(entry.cogs)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+
+                    <td className="p-3 whitespace-nowrap w-[12%] bg-indigo-50/20">
+                      {isOutgoing && entry.type === "SALE" ? (
+                        <span className="font-mono text-indigo-700 text-[11px] font-bold block text-center border bg-white rounded py-0.5">
+                          {formatCurrency(entry.totalPrice + (entry.vat || 0))}
                         </span>
                       ) : (
                         <span className="text-gray-300">-</span>

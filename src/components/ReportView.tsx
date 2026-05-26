@@ -201,6 +201,8 @@ export function ReportView({
           "تعداد خروجی",
           "ثمن واحد خروجی (ریال)",
           "مبلغ کل خروجی",
+          "مالیات کل خروجی",
+          "جمع کل خروجی",
           "بهای فروش (خروجی)",
           "موجودی",
           "ارزش کل موجودی",
@@ -230,6 +232,8 @@ export function ReportView({
           isOutgoing ? e.quantity : "",
           isOutgoing ? e.unitPrice : "",
           isOutgoing ? e.totalPrice : "",
+          isOutgoing && e.type === "SALE" ? (e.vat || 0) : "",
+          isOutgoing && e.type === "SALE" ? (e.totalPrice + (e.vat || 0)) : "",
           isOutgoing && e.type === "SALE" ? e.cogs : "",
           e.balanceQuantity,
           e.balanceTotalCost,
@@ -427,6 +431,8 @@ export function ReportView({
                     "تعداد خروجی",
                     "فی خروجی",
                     "مبلغ خروجی",
+                    "مالیات خروجی",
+                    "جمع کل خروجی",
                     "بهای فروش (خروجی)",
                     "موجودی",
                     "ارزش کل موجودی",
@@ -454,6 +460,8 @@ export function ReportView({
                       isOutgoing ? e.quantity : "",
                       isOutgoing ? e.unitPrice : "",
                       isOutgoing ? e.totalPrice : "",
+                      isOutgoing && e.type === "SALE" ? (e.vat || 0) : "",
+                      isOutgoing && e.type === "SALE" ? (e.totalPrice + (e.vat || 0)) : "",
                       isOutgoing && e.type === "SALE" ? e.cogs : "",
                       e.balanceQuantity,
                       e.balanceTotalCost,
@@ -612,6 +620,9 @@ export function ReportView({
                   <th className="p-4 text-xs font-black">مقدار خروج</th>
                   <th className="p-4 text-xs font-black">باقیمانده موجودی</th>
                   <th className="p-4 text-xs font-black">
+                    جمع کل (فروش + مالیات)
+                  </th>
+                  <th className="p-4 text-xs font-black">
                     فی واحد (جایگرین شده)
                   </th>
                   <th className="p-4 text-xs font-black">فی میانگین موزون</th>
@@ -631,7 +642,7 @@ export function ReportView({
                 {paginatedHistory.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={12}
+                      colSpan={13}
                       className="p-12 text-center text-gray-400 font-medium"
                     >
                       تراکنشی یافت نشد. لطفا مطمئن شوید فایل‌ها به درستی جفت شده
@@ -728,7 +739,12 @@ export function ReportView({
                           {formatNumber(entry.balanceQuantity)} {entry.unit || "عدد"}
                         </td>
 
-                        {/* Unit Price Input */}
+  {/* Unit Price Input */}
+                       <td className="p-4 font-mono font-bold text-indigo-700 bg-indigo-50/20">
+                          {isOutgoing && entry.type === "SALE" ? (
+                             formatNumber(entry.totalPrice + (entry.vat || 0))
+                          ) : "—"}
+                        </td>
                         <td className="p-4 font-mono font-bold">
                           {isBeingEdited ? (
                             <input

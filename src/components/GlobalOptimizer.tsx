@@ -46,6 +46,15 @@ export function GlobalOptimizer({
   const [taxShiftMaxQtyRatio, setTaxShiftMaxQtyRatio] = useState<number>(20);
   const [taxShiftMaxPriceRatio, setTaxShiftMaxPriceRatio] = useState<number>(15);
 
+  const [protectNonCash, setProtectNonCash] = useState(true);
+  const [autoAshantion, setAutoAshantion] = useState(true);
+
+  // Tafsil Repositioning State
+  const [allocName, setAllocName] = useState<string>("");
+  const [allocAmount, setAllocAmount] = useState<number | "">("");
+  const [allocTargetTafsil, setAllocTargetTafsil] = useState<string>("");
+  const [allocMatchDates, setAllocMatchDates] = useState(false);
+
   const [isRunning, setIsRunning] = useState(false);
   const [lastRunStats, setLastRunStats] = useState<{
     itemsAffected: number;
@@ -79,6 +88,14 @@ export function GlobalOptimizer({
     return tot;
   }, [kardexByItem, summaries, optScope, optItemName, optTaxGroup, vatRate]);
 
+  const allTafsils = useMemo(() => {
+    const set = new Set<string>();
+    processedTransactions.forEach(tx => {
+      if (tx.tafsil) set.add(tx.tafsil);
+    });
+    return Array.from(set);
+  }, [processedTransactions]);
+
   const runOptimizer = () => {
     setIsRunning(true);
 
@@ -111,6 +128,7 @@ export function GlobalOptimizer({
       });
 
       // Step 2: Auto-fix negative stock
+      const newAshantions: ProcessedTransaction[] = [];
       if (fixNegativeStock) {
         allItems.forEach((item) => {
           let runningQty = 0;
@@ -122,20 +140,40 @@ export function GlobalOptimizer({
             ) {
               runningQty += tx.quantity;
             } else if (tx.type === "SALE" || tx.type === "PURCHASE_RETURN") {
-              if (runningQty - tx.quantity < 0 && tx.type === "SALE") {
-                // We must shrink this sale
-                const possibleQty = Math.max(0, runningQty);
-                if (tx.quantity !== possibleQty) {
-                  const diff = tx.quantity - possibleQty;
-                  tx.quantity = possibleQty;
-                  tx.totalPrice = tx.quantity * tx.unitPrice;
+              if (runningQty - tx.quantity < 0) {
+                const isNonCash = protectNonCash && (!tx.tafsil || !tx.tafsil.includes("نقد"));
+                if (isNonCash && autoAshantion) {
+                    const deficit = tx.quantity - runningQty;
+                    newAshantions.push({
+                        id: `ASHANTION_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
+                        date: tx.date,
+                        timestamp: tx.timestamp - 1,
+                        itemName: tx.itemName,
+                        type: 'PURCHASE',
+                        quantity: deficit,
+                        unitPrice: 0,
+                        totalPrice: 0,
+                        rowNumber: -1,
+                        sourceFile: 'OPTIMIZER_ASHANTION',
+                        tafsil: 'اشانتیون جبرانی',
+                        taxRate: 0,
+                    });
+                    runningQty += deficit; // fix running qty before sale
+                } else if (tx.type === "SALE") {
+                    // We must shrink this sale
+                    const possibleQty = Math.max(0, runningQty);
+                    if (tx.quantity !== possibleQty) {
+                      const diff = tx.quantity - possibleQty;
+                      tx.quantity = possibleQty;
+                      tx.totalPrice = tx.quantity * tx.unitPrice;
 
-                  newAdjustments[tx.id] = {
-                    ...newAdjustments[tx.id],
-                    quantity: tx.quantity,
-                  };
-                  itemsAffected.add(item);
-                  salesCountAffected++;
+                      newAdjustments[tx.id] = {
+                        ...newAdjustments[tx.id],
+                        quantity: tx.quantity,
+                      };
+                      itemsAffected.add(item);
+                      salesCountAffected++;
+                    }
                 }
               }
               runningQty -= tx.quantity;
@@ -245,17 +283,27 @@ export function GlobalOptimizer({
       // Step 3: Complex Quantity/Price Adjustments to hit target revenue
       let currentRev = 0;
       let currentTx = 0;
+      let protectedRev = 0;
+      let protectedTx = 0;
 
       const allSales: ProcessedTransaction[] = [];
+      const modifiableSales: ProcessedTransaction[] = [];
       
       allItems.forEach((item) => {
         txnsByItem[item].forEach((tx) => {
           if (tx.type === "SALE") {
             allSales.push(tx);
             currentRev += tx.totalPrice;
-            currentTx +=
-              tx.totalPrice *
-              ((tx.taxRate !== undefined ? tx.taxRate : vatRate) / 100);
+            const txVat = tx.totalPrice * ((tx.taxRate !== undefined ? tx.taxRate : vatRate) / 100);
+            currentTx += txVat;
+
+            const isNonCash = !tx.tafsil || !tx.tafsil.includes("نقد");
+            if (protectNonCash && isNonCash) {
+                protectedRev += tx.totalPrice;
+                protectedTx += txVat;
+            } else {
+                modifiableSales.push(tx);
+            }
           }
         });
       });
@@ -264,17 +312,23 @@ export function GlobalOptimizer({
       const targetRevVal = Number(targetSalesRevenue) || currentRev;
       const targetTaxVal = Number(targetTaxAmount) || currentTx;
 
+      const currentModifiableRev = currentRev - protectedRev;
+      const currentModifiableTx = currentTx - protectedTx;
+      const targetModifiableRev = targetRevVal - protectedRev;
+      const targetModifiableTx = targetTaxVal - protectedTx;
+
       if (targetMode === 'REVENUE') {
-         revRatio = currentRev > 0 ? targetRevVal / currentRev : 1;
+         revRatio = currentModifiableRev > 0 ? (targetModifiableRev / currentModifiableRev) : 1;
       } else if (targetMode === 'TAX') {
-         revRatio = currentTx > 0 ? targetTaxVal / currentTx : 1;
+         revRatio = currentModifiableTx > 0 ? (targetModifiableTx / currentModifiableTx) : 1;
       } else {
-         const ratioRev = currentRev > 0 ? targetRevVal / currentRev : 1;
-         const ratioTax = currentTx > 0 ? targetTaxVal / currentTx : 1;
+         const ratioRev = currentModifiableRev > 0 ? (targetModifiableRev / currentModifiableRev) : 1;
+         const ratioTax = currentModifiableTx > 0 ? (targetModifiableTx / currentModifiableTx) : 1;
          revRatio = Math.max(ratioRev, ratioTax);
       }
+      revRatio = Math.max(0, revRatio);
 
-      allSales.forEach((sale) => {
+      modifiableSales.forEach((sale) => {
         // Find average cost from history to respect margins
         const historyEntry = kardexByItem[sale.itemName]?.find(
           (h) => h.id === sale.id,
@@ -367,7 +421,12 @@ export function GlobalOptimizer({
         }
       });
 
-      onStateChange({ adjustedTxns: newAdjustments });
+      const cleanedProcessedTransactions = processedTransactions.filter(tx => tx.sourceFile !== 'OPTIMIZER_ASHANTION');
+      
+      onStateChange({ 
+          adjustedTxns: newAdjustments, 
+          processedTransactions: [...cleanedProcessedTransactions, ...newAshantions] 
+      });
       setLastRunStats({
         itemsAffected: itemsAffected.size,
         salesCountAffected: salesCountAffected,
@@ -378,8 +437,55 @@ export function GlobalOptimizer({
   };
 
   const clearOptimizer = () => {
-    onStateChange({ adjustedTxns: {} });
+    const cleanedProcessedTransactions = processedTransactions.filter(tx => tx.sourceFile !== 'OPTIMIZER_ASHANTION');
+    onStateChange({ 
+        adjustedTxns: {},
+        processedTransactions: cleanedProcessedTransactions
+    });
     setLastRunStats(null);
+  };
+
+  const runTafsilAllocation = () => {
+    if (!allocName || !allocAmount || !allocTargetTafsil) return;
+
+    let targetAmt = Number(allocAmount);
+    let shiftedAmt = 0;
+
+    const targetDates = new Set<string>();
+    if (allocMatchDates) {
+        processedTransactions.forEach(tx => {
+           if (tx.tafsil === allocName) {
+               targetDates.add(tx.date);
+           }
+        });
+        if (targetDates.size === 0) {
+            alert("تفصیل مقصد هیچ تاریخی ندارد! برای تطابق تاریخ باید تفصیل مقصد از قبل تراکنش داشته باشد.");
+            return;
+        }
+    }
+
+    const newProcessed = processedTransactions.map(tx => {
+      // Create a new object to avoid mutating state directly
+      const newTx = { ...tx };
+      
+      if (newTx.type === 'SALE' && newTx.tafsil === allocTargetTafsil) {
+         if (allocMatchDates && !targetDates.has(newTx.date)) {
+             return newTx; // Skip if date doesn't match
+         }
+
+         const value = newTx.totalPrice; 
+         
+         if (shiftedAmt < targetAmt) {
+             newTx.tafsil = allocName;
+             shiftedAmt += value;
+         }
+      }
+      return newTx;
+    });
+
+    onStateChange({ processedTransactions: newProcessed });
+    
+    setAllocAmount("");
   };
 
   return (
@@ -570,6 +676,42 @@ export function GlobalOptimizer({
                   </span>
                 </div>
               </label>
+
+              <label className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-100">
+                <input
+                  type="checkbox"
+                  checked={protectNonCash}
+                  onChange={(e) => setProtectNonCash(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                />
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-gray-800">
+                    محافظت از مقادیر و نرخ فروش تفصیل‌های غیر نقد (استثنا کردن)
+                  </span>
+                  <span className="text-[10px] text-gray-500 mt-0.5">
+                    کالاهایی که در ستون نام تفصیل آن‌ها کلمه "نقد" وجود ندارد، در محاسبات دستکاری مقداری و نرخی لحاظ نمی‌شوند.
+                  </span>
+                </div>
+              </label>
+
+              {protectNonCash && (
+                 <label className="flex items-center gap-3 p-2 ml-6 hover:bg-indigo-50/30 rounded cursor-pointer transition-colors border border-transparent hover:border-indigo-100">
+                   <input
+                     type="checkbox"
+                     checked={autoAshantion}
+                     onChange={(e) => setAutoAshantion(e.target.checked)}
+                     className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                   />
+                   <div className="flex flex-col">
+                     <span className="text-xs font-bold text-indigo-800">
+                       صدور اشانتیون خودکار برای اقلام غیر نقد
+                     </span>
+                     <span className="text-[10px] text-indigo-600/70 mt-0.5">
+                       اگر موجودی اقلام غیر نقد منفی شود، به جای کاهش فاکتور فروش آن‌ها، یک خرید صفر ریالی (اشانتیون) در کاردکس ایجاد می‌شود.
+                     </span>
+                   </div>
+                 </label>
+              )}
 
               <label className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-100">
                 <input
@@ -804,6 +946,88 @@ export function GlobalOptimizer({
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* TAFSIL REPOSITIONING PANEL */}
+      <div className="mt-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h4 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+          تخصیص و جابجایی گروهی نام تفصیل (خریداران)
+        </h4>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col lg:flex-row gap-4 items-end">
+            <div className="flex-[1.5] w-full flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-gray-600">
+                مبداء: کسر از کدام تفصیل؟
+              </label>
+              <select
+                value={allocTargetTafsil}
+                onChange={(e) => setAllocTargetTafsil(e.target.value)}
+                className="p-2.5 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:border-rose-500"
+              >
+                <option value="">-- انتخاب تفصیل مبداء --</option>
+                {allTafsils.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 flex flex-col gap-1.5 w-full">
+              <label className="text-xs font-bold text-gray-600">
+                مقصد: نام تفصیل جدید یا موجود
+              </label>
+              <input
+                type="text"
+                list="tafsil-list"
+                value={allocName}
+                onChange={(e) => setAllocName(e.target.value)}
+                placeholder="انتخاب یا تایپ نام..."
+                className="p-2.5 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:border-indigo-500"
+              />
+              <datalist id="tafsil-list">
+                {allTafsils.map(t => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+            </div>
+            <div className="flex-1 flex flex-col gap-1.5 w-full">
+              <label className="text-xs font-bold text-gray-600">
+                تا سقف مبلغ (ریال)
+              </label>
+              <input
+                type="number"
+                value={allocAmount}
+                onChange={(e) => setAllocAmount(Number(e.target.value))}
+                placeholder="میزان ریالی انتقال"
+                className="p-2.5 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="w-full lg:w-auto">
+              <button
+                onClick={runTafsilAllocation}
+                disabled={!allocName || !allocAmount || !allocTargetTafsil}
+                className="w-full lg:w-auto px-6 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors whitespace-nowrap"
+              >
+                اجرا و انتقال
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex flex-col gap-2 bg-amber-50/50 p-3 rounded border border-amber-100">
+             <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allocMatchDates}
+                  onChange={(e) => setAllocMatchDates(e.target.checked)}
+                  className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500"
+                />
+                <span className="text-xs font-bold text-amber-900">
+                  الزام تطابق تاریخ فعالیت (جهت جلوگیری از ایجاد تاریخ جدید برای خریدار مقصد)
+                </span>
+             </label>
+             <p className="text-[10px] text-amber-700 mt-1 leading-relaxed mr-7">
+               اگر تیک بخورد، سیستم تراکنش‌های خریدار <strong>مبداء</strong> را فقط در روزهایی که خریدار <strong>مقصد</strong> نیز از قبل در کاردکس تراکنش داشته تغییر می‌دهد. بدین ترتیب هیچ تاریخ فاکتور جدیدی برای خریدار مقصد ایجاد نمی‌شود.
+             </p>
+          </div>
         </div>
       </div>
     </div>
