@@ -30,6 +30,7 @@ export function GlobalOptimizer({
   const [adjustQuantities, setAdjustQuantities] = useState(true);
   const [adjustPrices, setAdjustPrices] = useState(true);
   const [autoGenerateSales, setAutoGenerateSales] = useState(false);
+  const [genSalesProfitMargin, setGenSalesProfitMargin] = useState<number>(20);
   const [taxShiftStrategy, setTaxShiftStrategy] = useState(false);
   const [exemptItems, setExemptItems] = useState<Set<string>>(new Set());
   const [taxShiftAmount, setTaxShiftAmount] = useState<number | "">("");
@@ -463,13 +464,10 @@ export function GlobalOptimizer({
                  if (stock <= 0) continue;
 
                  const historyEntry = kardexByItem[item]?.[0];
-                 let maxAllowedPrice = maxProfitMargin > 0 ? (historyEntry?.averageUnitCost || 0) * (1 + maxProfitMargin / 100) : ((historyEntry?.averageUnitCost || 0) * 5) || 0;
-                 
                  const summary = summaries.find(s => s.itemName === item);
-                 let priceToUse = maxAllowedPrice;
-                 if (!priceToUse || priceToUse === 0) {
-                     priceToUse = summary?.averageUnitCost ? summary.averageUnitCost * 2 : 100000;
-                 }
+                 const baseCost = historyEntry?.averageUnitCost || summary?.averageUnitCost || 0;
+                 
+                 let priceToUse = baseCost > 0 ? baseCost * (1 + genSalesProfitMargin / 100) : 100000;
 
                  const maxRevFromItem = stock * priceToUse;
                  const revToExtract = Math.min(remainingGap, maxRevFromItem);
@@ -930,22 +928,39 @@ export function GlobalOptimizer({
                 </div>
               </label>
 
-              <label className="flex items-center gap-3 p-2 hover:bg-emerald-50 rounded cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
-                <input
-                  type="checkbox"
-                  checked={autoGenerateSales}
-                  onChange={(e) => setAutoGenerateSales(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
-                />
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-gray-800">
-                    تولید فاکتور فروش جدید برای جبران کسری هدف
-                  </span>
-                  <span className="text-[10px] text-gray-500 mt-0.5">
-                    در صورت نرسیدن به هدف، از کالاهای دارای موجودی فاکتور جدید (الزاما برای خریداران نقد) می‌سازد.
-                  </span>
-                </div>
-              </label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-3 p-2 hover:bg-emerald-50 rounded cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
+                  <input
+                    type="checkbox"
+                    checked={autoGenerateSales}
+                    onChange={(e) => setAutoGenerateSales(e.target.checked)}
+                    className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-gray-800">
+                      تولید فاکتور فروش جدید برای جبران کسری هدف
+                    </span>
+                    <span className="text-[10px] text-gray-500 mt-0.5">
+                      در صورت نرسیدن به هدف، از کالاهای دارای موجودی فاکتور جدید (الزاما برای خریداران نقد) می‌سازد.
+                    </span>
+                  </div>
+                </label>
+                
+                {autoGenerateSales && (
+                  <div className="mr-8 flex items-center gap-2 bg-emerald-50/50 p-2 rounded-lg border border-emerald-100/50">
+                    <label className="text-xs font-bold text-emerald-800">
+                      درصد سود اختصاصی تولید:
+                    </label>
+                    <input
+                      type="number"
+                      value={genSalesProfitMargin}
+                      onChange={(e) => setGenSalesProfitMargin(Number(e.target.value))}
+                      className="w-20 p-1.5 border border-emerald-200 rounded text-center text-xs font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-emerald-600">٪ (نسبت قیمت فروش به بهای واحد)</span>
+                  </div>
+                )}
+              </div>
 
               <label className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors border border-transparent hover:border-gray-100">
                 <input
