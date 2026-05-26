@@ -43,6 +43,8 @@ export function ReportView({
   const [selectedItem, setSelectedItem] = useState<string>(
     summaries[0]?.itemName || "",
   );
+  const [summaryScope, setSummaryScope] = useState<'ITEM' | 'TAX_GROUP' | 'GLOBAL'>('GLOBAL');
+  const [summaryTaxGroup, setSummaryTaxGroup] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<
     | "KARDEX"
     | "SUMMARY"
@@ -239,6 +241,57 @@ export function ReportView({
   };
 
   const hasAnyAdjustments = Object.keys(adjustedTxns).length > 0;
+
+  const dynamicSummary = useMemo(() => {
+    if (summaryScope === 'ITEM') {
+      return summaries.find(s => s.itemName === selectedItem) || summaries[0];
+    }
+    
+    let itemsToInclude = summaries;
+    if (summaryScope === 'TAX_GROUP') {
+        itemsToInclude = summaries.filter(s => (s.itemVatRate !== undefined ? s.itemVatRate : vatRate) === summaryTaxGroup);
+    }
+    
+    // Aggregate itemsToInclude
+    const agg: ItemSummary = {
+        itemName: summaryScope === 'GLOBAL' ? 'تجمیعی کل' : `گروه مالیاتی ${summaryTaxGroup}٪`,
+        initialQuantity: 0,
+        initialValue: 0,
+        purchasedQuantity: 0,
+        purchasedValue: 0,
+        soldQuantity: 0,
+        salesRevenue: 0,
+        endingQuantity: 0,
+        endingValue: 0,
+        cogs: 0,
+        grossProfit: 0,
+        averageUnitCost: 0,
+    };
+    
+    let totalQtyForAvg = 0;
+    
+    itemsToInclude.forEach(s => {
+        agg.initialQuantity += s.initialQuantity;
+        agg.initialValue += s.initialValue;
+        agg.purchasedQuantity += s.purchasedQuantity;
+        agg.purchasedValue += s.purchasedValue;
+        agg.soldQuantity += s.soldQuantity;
+        agg.salesRevenue += s.salesRevenue;
+        agg.endingQuantity += s.endingQuantity;
+        agg.endingValue += s.endingValue;
+        agg.cogs += s.cogs;
+        agg.grossProfit += s.grossProfit;
+        totalQtyForAvg += s.endingQuantity; // simplistic merge
+    });
+    
+    if (totalQtyForAvg > 0) {
+        agg.averageUnitCost = agg.endingValue / totalQtyForAvg;
+    } else {
+        agg.averageUnitCost = 0;
+    }
+    
+    return agg;
+  }, [summaryScope, summaryTaxGroup, selectedItem, summaries, vatRate]);
 
   return (
     <div className="w-full max-w-7xl mx-auto flex flex-col gap-6">
@@ -814,47 +867,86 @@ export function ReportView({
         )}
 
         {/* TAB 2: SUMMARY & COST OF GOODS SOLD */}
-        {activeTab === "SUMMARY" && currentSummary && (
+        {activeTab === "SUMMARY" && dynamicSummary && (
           <div className="p-8">
+            <div className="flex flex-wrap items-center gap-4 mb-6 bg-gray-50 border border-gray-100 p-4 rounded-xl">
+              <span className="text-xs font-bold text-gray-700">محدوده گزارش (Scope):</span>
+              <div className="flex bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                <button
+                  onClick={() => setSummaryScope('GLOBAL')}
+                  className={`px-4 py-2 text-xs font-bold transition-colors ${summaryScope === 'GLOBAL' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                  تجمیعی کل
+                </button>
+                <button
+                  onClick={() => setSummaryScope('TAX_GROUP')}
+                  className={`px-4 py-2 text-xs font-bold border-l border-r border-gray-200 transition-colors ${summaryScope === 'TAX_GROUP' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                  گروه مالیاتی
+                </button>
+                <button
+                  onClick={() => setSummaryScope('ITEM')}
+                  className={`px-4 py-2 text-xs font-bold transition-colors ${summaryScope === 'ITEM' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                  کالای منتخب
+                </button>
+              </div>
+              
+              {summaryScope === 'TAX_GROUP' && (
+                <div className="flex items-center gap-2 pr-4 border-r border-gray-200">
+                  <span className="text-xs text-gray-500">انتخاب نرخ:</span>
+                  <select
+                    value={summaryTaxGroup}
+                    onChange={(e) => setSummaryTaxGroup(Number(e.target.value))}
+                    className="p-1.5 text-xs font-mono border border-gray-300 rounded focus:border-indigo-500 pr-8"
+                  >
+                    {[...new Set(summaries.map(s => s.itemVatRate !== undefined ? s.itemVatRate : vatRate))].map(rate => (
+                       <option key={rate} value={rate}>{rate}٪</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <SummaryCard
                 title="موجودی اول دوره"
-                qty={currentSummary.initialQuantity}
-                value={currentSummary.initialValue}
+                qty={dynamicSummary.initialQuantity}
+                value={dynamicSummary.initialValue}
               />
               <SummaryCard
                 title="خرید طی دوره"
-                qty={currentSummary.purchasedQuantity}
-                value={currentSummary.purchasedValue}
+                qty={dynamicSummary.purchasedQuantity}
+                value={dynamicSummary.purchasedValue}
               />
               <SummaryCard
                 title="موجودی پایان دوره"
-                qty={currentSummary.endingQuantity}
-                value={currentSummary.endingValue}
+                qty={dynamicSummary.endingQuantity}
+                value={dynamicSummary.endingValue}
                 highlight
               />
 
               <SummaryCard
                 title="فروش طی دوره"
-                qty={currentSummary.soldQuantity}
-                value={currentSummary.salesRevenue}
+                qty={dynamicSummary.soldQuantity}
+                value={dynamicSummary.salesRevenue}
               />
               <SummaryCard
                 title="بهای تمام شده فروش (میانگین موزون)"
-                qty={currentSummary.soldQuantity}
-                value={currentSummary.cogs}
+                qty={dynamicSummary.soldQuantity}
+                value={dynamicSummary.cogs}
               />
 
               {/* Profit metrics with precise percentage stats */}
               <div className="p-6 rounded-2xl border border-emerald-100 flex flex-col gap-2 bg-gradient-to-br from-emerald-50 to-teal-50/20 shadow-sm">
                 <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-                  سود و زیان ناخالص کالا
+                  سود و زیان ناخالص {summaryScope === 'ITEM' ? 'کالا' : (summaryScope === 'TAX_GROUP' ? 'گروه' : 'تجمیعی')}
                 </span>
 
                 <span
-                  className={`text-2xl font-black font-mono tracking-tight mt-1 ${currentSummary.grossProfit >= 0 ? "text-emerald-700" : "text-rose-600"}`}
+                  className={`text-2xl font-black font-mono tracking-tight mt-1 ${dynamicSummary.grossProfit >= 0 ? "text-emerald-700" : "text-rose-600"}`}
                 >
-                  {formatCurrency(currentSummary.grossProfit)}
+                  {formatCurrency(dynamicSummary.grossProfit)}
                   <span className="text-xs text-slate-500 font-sans font-normal mr-2">
                     ریال
                   </span>
@@ -866,9 +958,9 @@ export function ReportView({
                       حاشیه نسبت به بها (Markup)
                     </span>
                     <span className="text-xs font-mono font-bold text-emerald-700">
-                      {currentSummary.cogs > 0
+                      {dynamicSummary.cogs > 0
                         ? formatNumber(
-                            (currentSummary.grossProfit / currentSummary.cogs) *
+                            (dynamicSummary.grossProfit / dynamicSummary.cogs) *
                               100,
                           )
                         : "0"}{" "}
@@ -880,10 +972,10 @@ export function ReportView({
                       مارجین فروش (Margin)
                     </span>
                     <span className="text-xs font-mono font-bold text-sky-700">
-                      {currentSummary.salesRevenue > 0
+                      {dynamicSummary.salesRevenue > 0
                         ? formatNumber(
-                            (currentSummary.grossProfit /
-                              currentSummary.salesRevenue) *
+                            (dynamicSummary.grossProfit /
+                              dynamicSummary.salesRevenue) *
                               100,
                           )
                         : "0"}{" "}
@@ -894,7 +986,7 @@ export function ReportView({
 
                 <div className="text-[10px] text-slate-450 mt-3 pt-2 border-t border-emerald-100/40">
                   میانگین نهایی بها:{" "}
-                  {formatCurrency(currentSummary.averageUnitCost)} ریال
+                  {formatCurrency(dynamicSummary.averageUnitCost)} ریال
                 </div>
               </div>
             </div>
@@ -993,6 +1085,38 @@ export function ReportView({
                     })
                   )}
                 </tbody>
+                {taxGroups.length > 0 && (
+                  <tfoot className="bg-gray-100 border-t-2 border-gray-200 text-gray-800 font-bold text-xs">
+                    <tr>
+                      <td className="p-4">جمع کل</td>
+                      <td className="p-4 font-mono">
+                        {taxGroups.reduce((acc, curr) => acc + curr.itemsCount, 0)} کالا
+                      </td>
+                      <td className="p-4 font-mono">
+                        {taxGroups.reduce((acc, curr) => acc + curr.recordsCount, 0)} فاکتور
+                      </td>
+                      <td className="p-4 font-mono">
+                        {formatCurrency(taxGroups.reduce((acc, curr) => acc + curr.totalSales, 0))} ریال
+                      </td>
+                      <td className="p-4 font-mono text-left">
+                        {formatCurrency(taxGroups.reduce((acc, curr) => acc + curr.totalVat, 0))} ریال
+                      </td>
+                      <td className="p-4 font-mono">
+                        {formatCurrency(taxGroups.reduce((acc, curr) => acc + curr.totalCogs, 0))} ریال
+                      </td>
+                      <td className="p-4 font-mono text-emerald-800">
+                        {formatCurrency(taxGroups.reduce((acc, curr) => acc + curr.totalProfit, 0))} ریال
+                      </td>
+                      <td className="p-4 font-mono text-sky-800">
+                        {formatNumber(
+                           taxGroups.reduce((acc, curr) => acc + curr.totalSales, 0) > 0 
+                           ? (taxGroups.reduce((acc, curr) => acc + curr.totalProfit, 0) / taxGroups.reduce((acc, curr) => acc + curr.totalSales, 0)) * 100 
+                           : 0
+                        )}%
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
 

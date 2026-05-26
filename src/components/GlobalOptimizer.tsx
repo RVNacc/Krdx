@@ -38,6 +38,13 @@ export function GlobalOptimizer({
   );
   const [roundingLevel, setRoundingLevel] = useState<number>(1); // 1 = none, 1000 = nearest thousand
 
+  const [optScope, setOptScope] = useState<'GLOBAL' | 'TAX_GROUP' | 'ITEM'>('GLOBAL');
+  const [optTaxGroup, setOptTaxGroup] = useState<number>(0);
+  const [optItemName, setOptItemName] = useState<string>("");
+
+  const [taxShiftMaxQtyRatio, setTaxShiftMaxQtyRatio] = useState<number>(20);
+  const [taxShiftMaxPriceRatio, setTaxShiftMaxPriceRatio] = useState<number>(15);
+
   const [isRunning, setIsRunning] = useState(false);
   const [lastRunStats, setLastRunStats] = useState<{
     itemsAffected: number;
@@ -46,20 +53,30 @@ export function GlobalOptimizer({
   } | null>(null);
 
   const currentTotalRevenue = useMemo(() => {
-    return summaries.reduce((acc, s) => acc + s.salesRevenue, 0);
-  }, [summaries]);
+    return summaries
+      .filter(s => {
+          if (optScope === 'ITEM') return s.itemName === optItemName;
+          if (optScope === 'TAX_GROUP') return (s.itemVatRate !== undefined ? s.itemVatRate : vatRate) === optTaxGroup;
+          return true;
+      })
+      .reduce((acc, s) => acc + s.salesRevenue, 0);
+  }, [summaries, optScope, optItemName, optTaxGroup, vatRate]);
 
   const currentTotalTax = useMemo(() => {
     let tot = 0;
-    Object.values(kardexByItem).forEach((history) => {
+    Object.entries(kardexByItem).forEach(([itemName, history]) => {
+      const summary = summaries.find(s => s.itemName === itemName);
+      if (optScope === 'ITEM' && itemName !== optItemName) return;
+      if (summary && optScope === 'TAX_GROUP' && (summary.itemVatRate !== undefined ? summary.itemVatRate : vatRate) !== optTaxGroup) return;
+      
       history.forEach((tx) => {
-        if (tx.type === "SALE") {
+        if (tx.type === "SALE" && tx.vat) {
           tot += tx.vat;
         }
       });
     });
     return tot;
-  }, [kardexByItem]);
+  }, [kardexByItem, summaries, optScope, optItemName, optTaxGroup, vatRate]);
 
   const runOptimizer = () => {
     setIsRunning(true);
@@ -71,7 +88,15 @@ export function GlobalOptimizer({
 
       // We will clone the transactions into a temporary space to simulate timeline
       const txnsByItem: Record<string, ProcessedTransaction[]> = {};
-      const allItems = Object.keys(kardexByItem);
+      let allItems = Object.keys(kardexByItem).filter(itemName => {
+          if (optScope === 'ITEM') return itemName === optItemName;
+          if (optScope === 'TAX_GROUP') {
+              const summary = summaries.find(s => s.itemName === itemName);
+              if (!summary) return false;
+              return (summary.itemVatRate !== undefined ? summary.itemVatRate : vatRate) === optTaxGroup;
+          }
+          return true;
+      });
 
       // Step 1: Initialize local state tracking for inventory
       allItems.forEach((item) => {
@@ -152,29 +177,46 @@ export function GlobalOptimizer({
           const taxableRatio = (totalTaxableRev - shiftVal) / totalTaxableRev;
           const exemptRatio = (totalExemptRev + shiftVal) / totalExemptRev;
 
-          // First try to adjust by quantity, then if needed by price
-          taxableSales.forEach((tx) => {
-            const targetTotal = tx.totalPrice * taxableRatio;
-            if (adjustQuantities) {
-              const newQty = Math.floor((targetTotal / (tx.unitPrice || 1)));
-              if (newQty !== tx.quantity && newQty > 0) {
-                tx.quantity = newQty;
+          // Apply constrained ratio
+          const applyConstraint = (tx: ProcessedTransaction, ratio: number) => {
+            const originalPrice = tx.unitPrice;
+            const originalQty = tx.quantity;
+            let targetTotal = tx.totalPrice * ratio;
+            
+            if (adjustQuantities && ratio !== 1) {
+              let suggestedQty = Math.floor(targetTotal / (originalPrice || 1));
+              
+              // constrain qty shift
+              const maxAllowedQtyShift = originalQty * (taxShiftMaxQtyRatio / 100);
+              let newQty = suggestedQty;
+              if (suggestedQty > originalQty + maxAllowedQtyShift) newQty = Math.floor(originalQty + maxAllowedQtyShift);
+              if (suggestedQty < originalQty - maxAllowedQtyShift) newQty = Math.ceil(originalQty - maxAllowedQtyShift);
+              
+              if (newQty > 0) {
+                 tx.quantity = newQty;
+                 targetTotal = tx.quantity * originalPrice; 
               }
             }
-            tx.totalPrice = targetTotal;
-            tx.unitPrice = tx.quantity > 0 ? tx.totalPrice / tx.quantity : 0;
-          });
-          exemptSales.forEach((tx) => {
-            const targetTotal = tx.totalPrice * exemptRatio;
-            if (adjustQuantities) {
-               const newQty = Math.floor((targetTotal / (tx.unitPrice || 1)));
-               if (newQty !== tx.quantity && newQty > 0) {
-                 tx.quantity = newQty;
-               }
+            
+            if (adjustPrices && ratio !== 1) {
+              const remainingRatioToAchieve = ratio / (tx.quantity / originalQty);
+              let targetPrice = originalPrice * remainingRatioToAchieve;
+              
+              // constrain price shift
+              const maxAllowedPriceShift = originalPrice * (taxShiftMaxPriceRatio / 100);
+              let newPrice = targetPrice;
+              if (targetPrice > originalPrice + maxAllowedPriceShift) newPrice = originalPrice + maxAllowedPriceShift;
+              if (targetPrice < originalPrice - maxAllowedPriceShift) newPrice = originalPrice - maxAllowedPriceShift;
+              
+              tx.unitPrice = newPrice;
+              tx.totalPrice = tx.quantity * newPrice;
+            } else {
+               tx.totalPrice = tx.quantity * originalPrice;
             }
-            tx.totalPrice = targetTotal;
-            tx.unitPrice = tx.quantity > 0 ? tx.totalPrice / tx.quantity : 0;
-          });
+          };
+
+          taxableSales.forEach((tx) => applyConstraint(tx, taxableRatio));
+          exemptSales.forEach((tx) => applyConstraint(tx, exemptRatio));
         }
       }
 
@@ -310,6 +352,67 @@ export function GlobalOptimizer({
           یا پایین ببرد و به هدف ریالی و مالیاتی مدنظر شما نزدیک شود، بدون آنکه
           مقادیر خرید یا موجودی اولیه دستخوش تغییر شوند.
         </p>
+      </div>
+
+      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm mb-6 flex flex-col gap-4">
+        <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+          محدوده عملیاتی (Scope) پردازش
+        </h4>
+        <div className="flex bg-gray-50 rounded-lg border border-gray-200 overflow-hidden shadow-sm w-full lg:w-2/3">
+          <button
+            onClick={() => setOptScope('GLOBAL')}
+            className={`flex-1 py-2 px-4 text-xs font-bold transition-colors ${optScope === 'GLOBAL' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            تجمیعی کل (تمام داده‌ها)
+          </button>
+          <button
+            onClick={() => setOptScope('TAX_GROUP')}
+            className={`flex-1 py-2 px-4 text-xs font-bold border-l border-r border-gray-200 transition-colors ${optScope === 'TAX_GROUP' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            یک گروه درصدی مالیات
+          </button>
+          <button
+            onClick={() => setOptScope('ITEM')}
+            className={`flex-1 py-2 px-4 text-xs font-bold transition-colors ${optScope === 'ITEM' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            کالای منتخب
+          </button>
+        </div>
+        
+        {optScope === 'TAX_GROUP' && (
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-bold text-gray-500">
+              انتخاب درصد گروه مالیاتی:
+            </label>
+            <select
+              value={optTaxGroup}
+              onChange={(e) => setOptTaxGroup(Number(e.target.value))}
+              className="p-1.5 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:border-indigo-500 min-w-[100px]"
+            >
+              {[...new Set(summaries.map(s => s.itemVatRate !== undefined ? s.itemVatRate : vatRate))].map(rate => (
+                 <option key={rate} value={rate}>{rate}٪</option>
+              ))}
+            </select>
+          </div>
+        )}
+        
+        {optScope === 'ITEM' && (
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-bold text-gray-500">
+              انتخاب کالا:
+            </label>
+            <select
+              value={optItemName}
+              onChange={(e) => setOptItemName(e.target.value)}
+              className="p-1.5 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:border-indigo-500 min-w-[200px]"
+            >
+              <option value="">-- انتخاب کنید --</option>
+              {summaries.map(s => (
+                 <option key={s.itemName} value={s.itemName}>{s.itemName}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -477,8 +580,36 @@ export function GlobalOptimizer({
                       <span className="text-xs text-indigo-600">ریال</span>
                     </div>
                   </div>
+                  
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    <label className="text-xs font-bold text-indigo-800">
+                      حداکثر مجاز تغییر تعدادی کالاها هنگام شیفت: <span className="font-mono bg-white px-1 rounded">{taxShiftMaxQtyRatio}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="100"
+                      value={taxShiftMaxQtyRatio}
+                      onChange={(e) => setTaxShiftMaxQtyRatio(Number(e.target.value))}
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
+                  
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    <label className="text-xs font-bold text-indigo-800">
+                      حداکثر مجاز تغییر نرخی کالاها هنگام شیفت: <span className="font-mono bg-white px-1 rounded">{taxShiftMaxPriceRatio}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="100"
+                      value={taxShiftMaxPriceRatio}
+                      onChange={(e) => setTaxShiftMaxPriceRatio(Number(e.target.value))}
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
 
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-1.5 mt-2 border-t border-indigo-200 pt-3">
                     <label className="text-xs font-bold text-indigo-800">
                       انتخاب کالاهای معاف (افزایش درآمد این‌ها)
                     </label>

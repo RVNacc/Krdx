@@ -25,6 +25,30 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
     return list;
   }, [kardexByItem]);
 
+  const totals = useMemo(() => {
+    let totalIncomingQty = 0;
+    let totalIncomingValue = 0;
+    let totalOutgoingQty = 0;
+    let totalOutgoingValue = 0;
+    
+    allEntries.forEach(e => {
+        const isIncoming = e.type === "INITIAL" || e.type === "PURCHASE" || e.type === "SALE_RETURN";
+        const isOutgoing = e.type === "SALE" || e.type === "PURCHASE_RETURN";
+        if (isIncoming) {
+            totalIncomingQty += e.quantity;
+            totalIncomingValue += e.totalPrice;
+        }
+        if (isOutgoing) {
+            totalOutgoingQty += e.quantity;
+            totalOutgoingValue += e.totalPrice;
+        }
+    });
+    
+    return {
+        totalIncomingQty, totalIncomingValue, totalOutgoingQty, totalOutgoingValue
+    };
+  }, [allEntries]);
+
   const totalPages = Math.max(1, Math.ceil(allEntries.length / rowsPerPage));
   const paginatedHistory = allEntries.slice(
     (currentPage - 1) * rowsPerPage,
@@ -100,6 +124,25 @@ export function GlobalKardex({ kardexByItem }: GlobalKardexProps) {
           <Download className="w-4 h-4" />
           دانلود کاردکس کل در اکسل (CSV)
         </button>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4 mb-4">
+        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 flex flex-col gap-1 items-center">
+            <span className="text-xs font-bold text-indigo-700 opacity-80">جمع مقداری ورودی</span>
+            <span className="text-lg font-black font-mono text-indigo-800">{formatNumber(totals.totalIncomingQty)}</span>
+        </div>
+        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 flex flex-col gap-1 items-center">
+            <span className="text-xs font-bold text-indigo-700 opacity-80">جمع ریالی ورودی</span>
+            <span className="text-lg font-black font-mono text-indigo-800">{formatNumber(totals.totalIncomingValue)}</span>
+        </div>
+        <div className="bg-rose-50 border border-rose-100 rounded-lg p-3 flex flex-col gap-1 items-center">
+            <span className="text-xs font-bold text-rose-700 opacity-80">جمع مقداری خروجی</span>
+            <span className="text-lg font-black font-mono text-rose-800">{formatNumber(totals.totalOutgoingQty)}</span>
+        </div>
+        <div className="bg-rose-50 border border-rose-100 rounded-lg p-3 flex flex-col gap-1 items-center">
+            <span className="text-xs font-bold text-rose-700 opacity-80">جمع ریالی خروجی</span>
+            <span className="text-lg font-black font-mono text-rose-800">{formatNumber(totals.totalOutgoingValue)}</span>
+        </div>
       </div>
 
       <div className="relative flex-1 overflow-auto border border-gray-100 rounded-lg shadow-inner">
