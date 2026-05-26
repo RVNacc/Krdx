@@ -29,6 +29,7 @@ export function GlobalOptimizer({
 
   const [adjustQuantities, setAdjustQuantities] = useState(true);
   const [adjustPrices, setAdjustPrices] = useState(true);
+  const [autoGenerateSales, setAutoGenerateSales] = useState(false);
   const [taxShiftStrategy, setTaxShiftStrategy] = useState(false);
   const [exemptItems, setExemptItems] = useState<Set<string>>(new Set());
   const [taxShiftAmount, setTaxShiftAmount] = useState<number | "">("");
@@ -422,11 +423,96 @@ export function GlobalOptimizer({
         }
       });
 
-      const cleanedProcessedTransactions = processedTransactions.filter(tx => tx.sourceFile !== 'OPTIMIZER_ASHANTION');
+      const newGeneratedSales: ProcessedTransaction[] = [];
+      if (autoGenerateSales) {
+        let simulatedRev = 0;
+        let simulatedTax = 0;
+        
+        allItems.forEach((item) => {
+          txnsByItem[item].forEach((tx) => {
+            if (tx.type === "SALE") {
+                simulatedRev += tx.totalPrice;
+            }
+          });
+        });
+
+        let revGap = 0;
+        const currentTargetRev = Number(targetSalesRevenue);
+        const currentTargetTax = Number(targetTaxAmount);
+        
+        if (targetMode === 'REVENUE' && currentTargetRev) {
+            revGap = currentTargetRev - simulatedRev;
+        } else if (targetMode === 'TAX' && currentTargetTax) {
+            revGap = (currentTargetTax / (vatRate / 100)) - simulatedRev;
+        } else if (targetMode === 'BOTH') {
+            revGap = Math.max(
+               currentTargetRev > 0 ? currentTargetRev - simulatedRev : 0,
+               currentTargetTax > 0 ? (currentTargetTax / (vatRate / 100)) - simulatedRev : 0
+            );
+        }
+
+        if (revGap > 0) {
+           const itemsWithStock = allItems.filter(item => inventoryPool[item] > 0);
+           
+           if (itemsWithStock.length > 0) {
+              let remainingGap = revGap;
+
+              for (const item of itemsWithStock) {
+                 if (remainingGap <= 0) break;
+                 const stock = inventoryPool[item];
+                 if (stock <= 0) continue;
+
+                 const historyEntry = kardexByItem[item]?.[0];
+                 let maxAllowedPrice = maxProfitMargin > 0 ? (historyEntry?.averageUnitCost || 0) * (1 + maxProfitMargin / 100) : ((historyEntry?.averageUnitCost || 0) * 5) || 0;
+                 
+                 const summary = summaries.find(s => s.itemName === item);
+                 let priceToUse = maxAllowedPrice;
+                 if (!priceToUse || priceToUse === 0) {
+                     priceToUse = summary?.averageUnitCost ? summary.averageUnitCost * 2 : 100000;
+                 }
+
+                 const maxRevFromItem = stock * priceToUse;
+                 const revToExtract = Math.min(remainingGap, maxRevFromItem);
+                 
+                 const qtyToUse = Math.ceil(revToExtract / priceToUse);
+                 const finalQty = Math.min(qtyToUse, stock);
+                 const finalRev = finalQty * priceToUse;
+                 
+                 const txns = kardexByItem[item] || [];
+                 const maxTxInfo = txns.length > 0 ? txns[txns.length - 1] : null;
+                 let saleDate = maxTxInfo ? (maxTxInfo.date instanceof Date ? maxTxInfo.date : new Date(maxTxInfo.date)) : new Date();
+                 let saleTimestamp = maxTxInfo ? maxTxInfo.timestamp + 1000 : Date.now();
+
+                 const newSale: ProcessedTransaction = {
+                    id: `GEN_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
+                    date: saleDate,
+                    timestamp: saleTimestamp,
+                    itemName: item,
+                    type: 'SALE',
+                    tafsil: 'خریدار نقد',
+                    quantity: finalQty,
+                    unitPrice: priceToUse,
+                    totalPrice: finalRev,
+                    taxRate: summary?.itemVatRate !== undefined ? summary.itemVatRate : vatRate,
+                    sourceFile: 'OPTIMIZER_GENERATED_SALE',
+                    rowNumber: -1
+                 };
+
+                 newGeneratedSales.push(newSale);
+                 inventoryPool[item] -= finalQty;
+                 remainingGap -= finalRev;
+                 itemsAffected.add(item);
+                 salesCountAffected++;
+              }
+           }
+        }
+      }
+
+      const cleanedProcessedTransactions = processedTransactions.filter(tx => tx.sourceFile !== 'OPTIMIZER_ASHANTION' && tx.sourceFile !== 'OPTIMIZER_GENERATED_SALE');
       
       onStateChange({ 
           adjustedTxns: newAdjustments, 
-          processedTransactions: [...cleanedProcessedTransactions, ...newAshantions] 
+          processedTransactions: [...cleanedProcessedTransactions, ...newAshantions, ...newGeneratedSales] 
       });
       setLastRunStats({
         itemsAffected: itemsAffected.size,
@@ -438,7 +524,7 @@ export function GlobalOptimizer({
   };
 
   const clearOptimizer = () => {
-    const cleanedProcessedTransactions = processedTransactions.filter(tx => tx.sourceFile !== 'OPTIMIZER_ASHANTION');
+    const cleanedProcessedTransactions = processedTransactions.filter(tx => tx.sourceFile !== 'OPTIMIZER_ASHANTION' && tx.sourceFile !== 'OPTIMIZER_GENERATED_SALE');
     onStateChange({ 
         adjustedTxns: {},
         processedTransactions: cleanedProcessedTransactions
@@ -840,6 +926,23 @@ export function GlobalOptimizer({
                   <span className="text-[10px] text-gray-500 mt-0.5">
                     به سیستم اجازه می‌دهد برای تناسب سود، قیمت‌های فروش را بالا
                     و پایین ببرد.
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-2 hover:bg-emerald-50 rounded cursor-pointer transition-colors border border-transparent hover:border-emerald-100">
+                <input
+                  type="checkbox"
+                  checked={autoGenerateSales}
+                  onChange={(e) => setAutoGenerateSales(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                />
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-gray-800">
+                    تولید فاکتور فروش جدید برای جبران کسری هدف
+                  </span>
+                  <span className="text-[10px] text-gray-500 mt-0.5">
+                    در صورت نرسیدن به هدف، از کالاهای دارای موجودی فاکتور جدید (الزاما برای خریداران نقد) می‌سازد.
                   </span>
                 </div>
               </label>
