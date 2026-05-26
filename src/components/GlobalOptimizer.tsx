@@ -24,6 +24,7 @@ export function GlobalOptimizer({
   const [fixNegativeStock, setFixNegativeStock] = useState(true);
   const [targetSalesRevenue, setTargetSalesRevenue] = useState<number | "">("");
   const [targetTaxAmount, setTargetTaxAmount] = useState<number | "">("");
+  const [targetMode, setTargetMode] = useState<'REVENUE' | 'TAX' | 'BOTH'>('REVENUE');
 
   const [adjustQuantities, setAdjustQuantities] = useState(true);
   const [adjustPrices, setAdjustPrices] = useState(true);
@@ -39,7 +40,7 @@ export function GlobalOptimizer({
   const [roundingLevel, setRoundingLevel] = useState<number>(1); // 1 = none, 1000 = nearest thousand
 
   const [optScope, setOptScope] = useState<'GLOBAL' | 'TAX_GROUP' | 'ITEM'>('GLOBAL');
-  const [optTaxGroup, setOptTaxGroup] = useState<number>(0);
+  const [optTaxGroup, setOptTaxGroup] = useState<number | 'ALL'>('ALL');
   const [optItemName, setOptItemName] = useState<string>("");
 
   const [taxShiftMaxQtyRatio, setTaxShiftMaxQtyRatio] = useState<number>(20);
@@ -56,7 +57,7 @@ export function GlobalOptimizer({
     return summaries
       .filter(s => {
           if (optScope === 'ITEM') return s.itemName === optItemName;
-          if (optScope === 'TAX_GROUP') return (s.itemVatRate !== undefined ? s.itemVatRate : vatRate) === optTaxGroup;
+          if (optScope === 'TAX_GROUP' && optTaxGroup !== 'ALL') return (s.itemVatRate !== undefined ? s.itemVatRate : vatRate) === optTaxGroup;
           return true;
       })
       .reduce((acc, s) => acc + s.salesRevenue, 0);
@@ -67,7 +68,7 @@ export function GlobalOptimizer({
     Object.entries(kardexByItem).forEach(([itemName, history]) => {
       const summary = summaries.find(s => s.itemName === itemName);
       if (optScope === 'ITEM' && itemName !== optItemName) return;
-      if (summary && optScope === 'TAX_GROUP' && (summary.itemVatRate !== undefined ? summary.itemVatRate : vatRate) !== optTaxGroup) return;
+      if (summary && optScope === 'TAX_GROUP' && optTaxGroup !== 'ALL' && (summary.itemVatRate !== undefined ? summary.itemVatRate : vatRate) !== optTaxGroup) return;
       
       history.forEach((tx) => {
         if (tx.type === "SALE" && tx.vat) {
@@ -90,7 +91,7 @@ export function GlobalOptimizer({
       const txnsByItem: Record<string, ProcessedTransaction[]> = {};
       let allItems = Object.keys(kardexByItem).filter(itemName => {
           if (optScope === 'ITEM') return itemName === optItemName;
-          if (optScope === 'TAX_GROUP') {
+          if (optScope === 'TAX_GROUP' && optTaxGroup !== 'ALL') {
               const summary = summaries.find(s => s.itemName === itemName);
               if (!summary) return false;
               return (summary.itemVatRate !== undefined ? summary.itemVatRate : vatRate) === optTaxGroup;
@@ -143,6 +144,14 @@ export function GlobalOptimizer({
         });
       }
 
+      const inventoryPool: Record<string, number> = {};
+      allItems.forEach((item) => {
+        const summary = summaries.find(s => s.itemName === item);
+        if (summary) {
+           inventoryPool[item] = summary.endingQuantity;
+        }
+      });
+
       // Step 2.5: Shift Revenue between Taxable and Exempt
       const shiftVal = Number(taxShiftAmount) || 0;
       if (
@@ -192,8 +201,21 @@ export function GlobalOptimizer({
               if (suggestedQty > originalQty + maxAllowedQtyShift) newQty = Math.floor(originalQty + maxAllowedQtyShift);
               if (suggestedQty < originalQty - maxAllowedQtyShift) newQty = Math.ceil(originalQty - maxAllowedQtyShift);
               
-              if (newQty > 0) {
+              if (newQty > originalQty) {
+                 const increaseNeeded = newQty - originalQty;
+                 const maxIncrease = inventoryPool[tx.itemName] || 0;
+                 const actualIncrease = Math.min(increaseNeeded, maxIncrease);
+                 if (actualIncrease > 0) {
+                     tx.quantity = originalQty + actualIncrease;
+                     inventoryPool[tx.itemName] -= actualIncrease;
+                     targetTotal = tx.quantity * originalPrice; 
+                 } else {
+                     newQty = originalQty;
+                 }
+              } else if (newQty < originalQty && newQty > 0) {
+                 const savedQty = originalQty - newQty;
                  tx.quantity = newQty;
+                 inventoryPool[tx.itemName] = (inventoryPool[tx.itemName] || 0) + savedQty;
                  targetTotal = tx.quantity * originalPrice; 
               }
             }
@@ -225,6 +247,7 @@ export function GlobalOptimizer({
       let currentTx = 0;
 
       const allSales: ProcessedTransaction[] = [];
+      
       allItems.forEach((item) => {
         txnsByItem[item].forEach((tx) => {
           if (tx.type === "SALE") {
@@ -237,11 +260,19 @@ export function GlobalOptimizer({
         });
       });
 
+      let revRatio = 1;
       const targetRevVal = Number(targetSalesRevenue) || currentRev;
       const targetTaxVal = Number(targetTaxAmount) || currentTx;
 
-      // Simplified heuristic: calculate global ratio needed
-      const revRatio = currentRev > 0 ? targetRevVal / currentRev : 1;
+      if (targetMode === 'REVENUE') {
+         revRatio = currentRev > 0 ? targetRevVal / currentRev : 1;
+      } else if (targetMode === 'TAX') {
+         revRatio = currentTx > 0 ? targetTaxVal / currentTx : 1;
+      } else {
+         const ratioRev = currentRev > 0 ? targetRevVal / currentRev : 1;
+         const ratioTax = currentTx > 0 ? targetTaxVal / currentTx : 1;
+         revRatio = Math.max(ratioRev, ratioTax);
+      }
 
       allSales.forEach((sale) => {
         // Find average cost from history to respect margins
@@ -261,12 +292,24 @@ export function GlobalOptimizer({
         if (adjustQuantities) {
            if (revRatio !== 1) {
              const suggestedQty = Math.max(0, Math.floor(targetSaleRev / (originalSale.unitPrice || 1)));
-             if (suggestedQty !== sale.quantity) {
+             
+             if (suggestedQty > sale.quantity) {
+                 const increaseNeeded = suggestedQty - sale.quantity;
+                 const maxIncrease = inventoryPool[sale.itemName] || 0;
+                 const actualIncrease = Math.min(increaseNeeded, maxIncrease);
+                 
+                 if (actualIncrease > 0) {
+                     sale.quantity += actualIncrease;
+                     inventoryPool[sale.itemName] -= actualIncrease;
+                 }
+                 sale.totalPrice = sale.quantity * sale.unitPrice;
+             } else if (suggestedQty < sale.quantity) {
+                 const savedQty = sale.quantity - suggestedQty;
                  sale.quantity = suggestedQty;
                  sale.totalPrice = sale.quantity * sale.unitPrice;
-                 // Recompute target sale rev remaining for price adjustment
-                 targetSaleRev = targetSaleRev; 
+                 inventoryPool[sale.itemName] = (inventoryPool[sale.itemName] || 0) + savedQty;
              }
+             targetSaleRev = targetSaleRev;
            }
         }
 
@@ -386,9 +429,10 @@ export function GlobalOptimizer({
             </label>
             <select
               value={optTaxGroup}
-              onChange={(e) => setOptTaxGroup(Number(e.target.value))}
+              onChange={(e) => setOptTaxGroup(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
               className="p-1.5 border border-gray-300 rounded font-mono text-sm focus:outline-none focus:border-indigo-500 min-w-[100px]"
             >
+              <option value="ALL">همه درصدهای مالیاتی</option>
               {[...new Set(summaries.map(s => s.itemVatRate !== undefined ? s.itemVatRate : vatRate))].map(rate => (
                  <option key={rate} value={rate}>{rate}٪</option>
               ))}
@@ -425,7 +469,25 @@ export function GlobalOptimizer({
             </h4>
 
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 mb-2 border-b border-gray-100 pb-4">
+                <label className="text-xs font-bold text-gray-700">تمرکز هدف‌گذاری سیستم (Target Prioritization)</label>
+                <div className="flex gap-4 items-center bg-gray-50 p-2 rounded-lg border border-gray-200">
+                   <label className="flex items-center gap-1.5 text-xs text-gray-700 font-medium cursor-pointer">
+                      <input type="radio" checked={targetMode === 'REVENUE'} onChange={() => setTargetMode('REVENUE')} className="accent-indigo-600" />
+                      مبلغ فروش
+                   </label>
+                   <label className="flex items-center gap-1.5 text-xs text-gray-700 font-medium cursor-pointer">
+                      <input type="radio" checked={targetMode === 'TAX'} onChange={() => setTargetMode('TAX')} className="accent-indigo-600" />
+                      مبلغ مالیات
+                   </label>
+                   <label className="flex items-center gap-1.5 text-xs text-gray-700 font-medium cursor-pointer">
+                      <input type="radio" checked={targetMode === 'BOTH'} onChange={() => setTargetMode('BOTH')} className="accent-indigo-600" />
+                      ترکیبی (هردو)
+                   </label>
+                </div>
+              </div>
+
+              <div className={`flex flex-col gap-1.5 ${targetMode === 'TAX' ? 'opacity-50 grayscale' : ''}`}>
                 <label className="text-xs font-bold text-gray-500">
                   درآمد فروش هدف (میزان ریالی کل فروش)
                 </label>
@@ -436,14 +498,15 @@ export function GlobalOptimizer({
                     onChange={(e) =>
                       setTargetSalesRevenue(Number(e.target.value))
                     }
+                    disabled={targetMode === 'TAX'}
                     placeholder={`در حال حاضر: ${formatNumber(currentTotalRevenue)}`}
-                    className="flex-1 p-2.5 border border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:border-indigo-500"
+                    className="flex-1 p-2.5 border border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   />
                   <span className="text-xs text-gray-400">ریال</span>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className={`flex flex-col gap-1.5 ${targetMode === 'REVENUE' ? 'opacity-50 grayscale' : ''}`}>
                 <label className="text-xs font-bold text-gray-500">
                   مالیات و عوارض هدف (Target VAT)
                 </label>
@@ -452,8 +515,9 @@ export function GlobalOptimizer({
                     type="number"
                     value={targetTaxAmount}
                     onChange={(e) => setTargetTaxAmount(Number(e.target.value))}
+                    disabled={targetMode === 'REVENUE'}
                     placeholder={`در حال حاضر: ${formatNumber(currentTotalTax)}`}
-                    className="flex-1 p-2.5 border border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:border-indigo-500"
+                    className="flex-1 p-2.5 border border-gray-200 rounded-lg font-mono text-sm focus:outline-none focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   />
                   <span className="text-xs text-gray-400">ریال</span>
                 </div>
