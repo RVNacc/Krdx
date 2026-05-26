@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { KardexEntry, ItemSummary, ProcessedTransaction } from "../types";
 import { formatCurrency, formatNumber } from "../lib/utils";
-import { Play, Settings, ShieldAlert, Cpu, CheckCircle } from "lucide-react";
+import { Play, Settings, ShieldAlert, Cpu, CheckCircle, Upload } from "lucide-react";
+import * as XLSX from 'xlsx';
 
 interface GlobalOptimizerProps {
   kardexByItem: Record<string, KardexEntry[]>;
@@ -455,7 +456,7 @@ export function GlobalOptimizer({
     if (allocMatchDates) {
         processedTransactions.forEach(tx => {
            if (tx.tafsil === allocName) {
-               targetDates.add(tx.date);
+               targetDates.add(String(tx.date));
            }
         });
         if (targetDates.size === 0) {
@@ -469,7 +470,7 @@ export function GlobalOptimizer({
       const newTx = { ...tx };
       
       if (newTx.type === 'SALE' && newTx.tafsil === allocTargetTafsil) {
-         if (allocMatchDates && !targetDates.has(newTx.date)) {
+         if (allocMatchDates && !targetDates.has(String(newTx.date))) {
              return newTx; // Skip if date doesn't match
          }
 
@@ -486,6 +487,100 @@ export function GlobalOptimizer({
     onStateChange({ processedTransactions: newProcessed });
     
     setAllocAmount("");
+  };
+
+  const handleExcelAllocationUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: "binary" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        let targetRules: { date: string; tafsil: string; amount: number }[] = [];
+        data.forEach((row: any) => {
+          let dateStr = row["تاریخ"] || row["Date"] || row["date"] || row["تاریخ فاکتور"] || row["Date "];
+          let tafsil = row["تفصیل"] || row["نام تفصیل"] || row["نام خریدار"] || row["خریدار"] || row["Tafsil"] || row["tafsil"] || row["نام خریدار/تفصیل"];
+          let amount = row["مبلغ فروش"] || row["مبلغ کل"] || row["مبلغ"] || row["مبلغ نهایی"] || row["Amount"] || row["amount"] || row["مجموع کل"];
+
+          if (dateStr && tafsil && amount) {
+            let amountVal = Number(String(amount).replace(/,/g, ""));
+            if (!isNaN(amountVal) && amountVal > 0) {
+              targetRules.push({
+                date: String(dateStr).trim(),
+                tafsil: String(tafsil).trim(),
+                amount: amountVal,
+              });
+            }
+          }
+        });
+
+        if (targetRules.length === 0) {
+          alert(
+            "داده معتبری یافت نشد. نیازمند حداقل ستون‌های: (تاریخ)، (تفصیل) و (مبلغ) هستیم."
+          );
+          return;
+        }
+
+        let newProcessed = [...processedTransactions];
+        let changedCount = 0;
+
+        targetRules.forEach((rule) => {
+          let remainingAmount = rule.amount;
+
+          // First, calculate how much of this target rule is ALREADY met (if the excel file describes the final state)
+          let currentAmountForRule = 0;
+          newProcessed.forEach((tx) => {
+            if (tx.type === "SALE" && tx.date === rule.date && tx.tafsil === rule.tafsil) {
+              currentAmountForRule += tx.totalPrice;
+            }
+          });
+          
+          remainingAmount -= currentAmountForRule;
+
+          if (remainingAmount > 0) {
+            // Find sales on this date that do NOT belong to this tafsil
+            newProcessed = newProcessed.map((tx) => {
+              if (
+                tx.type === "SALE" &&
+                tx.date === rule.date &&
+                tx.tafsil !== rule.tafsil &&
+                remainingAmount > 0
+              ) {
+                // If the whole transaction can be mapped
+                if (tx.totalPrice <= remainingAmount) {
+                  remainingAmount -= tx.totalPrice;
+                  changedCount++;
+                  return { ...tx, tafsil: rule.tafsil };
+                } else {
+                  // We could split here, but for simplicity we'll just skip to see if smaller transactions fit, or over-allocate slightly.
+                  // For now, let's just over-allocate to reach the limit if needed to ensure we hit it.
+                  remainingAmount -= tx.totalPrice;
+                  changedCount++;
+                  return { ...tx, tafsil: rule.tafsil };
+                }
+              }
+              return tx;
+            });
+          }
+        });
+
+        onStateChange({ processedTransactions: newProcessed });
+        alert(
+          `پردازش فایل اکسل تکمیل شد. تعداد ${changedCount} رکورد فروش ارزیابی و تفصیل آن‌ها بروزرسانی شد.`
+        );
+      } catch (err) {
+        console.error("Excel parse error", err);
+        alert("خطا در پردازش فایل اکسل.");
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = "";
   };
 
   return (
@@ -825,7 +920,7 @@ export function GlobalOptimizer({
                       onChange={(e) => {
                         const options = Array.from(
                           e.target.selectedOptions,
-                          (option) => option.value,
+                          (option: HTMLOptionElement) => option.value,
                         );
                         setExemptItems(new Set(options));
                       }}
@@ -1027,6 +1122,30 @@ export function GlobalOptimizer({
              <p className="text-[10px] text-amber-700 mt-1 leading-relaxed mr-7">
                اگر تیک بخورد، سیستم تراکنش‌های خریدار <strong>مبداء</strong> را فقط در روزهایی که خریدار <strong>مقصد</strong> نیز از قبل در کاردکس تراکنش داشته تغییر می‌دهد. بدین ترتیب هیچ تاریخ فاکتور جدیدی برای خریدار مقصد ایجاد نمی‌شود.
              </p>
+          </div>
+
+          <div className="my-4 border-t border-gray-100"></div>
+          
+          <div className="flex flex-col gap-3">
+            <h5 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+              <Upload className="w-4 h-4 text-indigo-600" />
+              تطابق و جایگزینی هوشمند از طریق فایل اکسل (الگو)
+            </h5>
+            <p className="text-[11px] text-gray-600 leading-relaxed font-medium">
+               شما می‌توانید یک فایل اکسل حاوی سه ستون <strong>تاریخ</strong>، <strong>تفصیل</strong> (یا نام خریدار) و <strong>مبلغ کل</strong> آپلود کنید. سیستم به صورت خودکار در همان تاریخ‌ها، بررسی کرده و تفصیل تراکنش‌های موجود (از هر تفصیلی که باشد) را جایگزین و به نام تنظیم‌شده در فایل اکسل تغییر می‌دهد تا به آن مبلغ ریالی هدف برسد. در صورتی که مبلغ تطابق کامل نداشته باشد، تا جای ممکن مبلغ را از تراکنش‌های همان تاریخ جایگزین می‌کند.
+            </p>
+            <div className="mt-2">
+               <label className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer w-full lg:w-max justify-center shadow-sm">
+                  <Upload className="w-4 h-4" />
+                  بارگذاری فایل اکسل و اعمال هوشمند الگو
+                  <input 
+                     type="file" 
+                     accept=".xlsx, .xls, .csv" 
+                     className="hidden" 
+                     onChange={handleExcelAllocationUpload} 
+                  />
+               </label>
+            </div>
           </div>
         </div>
       </div>
