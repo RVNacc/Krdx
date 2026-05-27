@@ -144,8 +144,9 @@ export function GlobalOptimizer({
               runningQty += tx.quantity;
             } else if (tx.type === "SALE" || tx.type === "PURCHASE_RETURN") {
               if (runningQty - tx.quantity < 0) {
-                const isNonCash = protectNonCash && (!tx.tafsil || !tx.tafsil.includes("نقد"));
-                if (isNonCash && autoAshantion) {
+                const isNonCashSale = tx.type === "SALE" && protectNonCash && (!tx.tafsil || !tx.tafsil.includes("نقد"));
+                const shouldAshantion = autoAshantion && (isNonCashSale || tx.type === "PURCHASE_RETURN");
+                if (shouldAshantion) {
                     const deficit = tx.quantity - runningQty;
                     newAshantions.push({
                         id: `ASHANTION_${Date.now()}_${Math.random().toString(36).substring(2,9)}`,
@@ -208,6 +209,9 @@ export function GlobalOptimizer({
           const isExempt = exemptItems.has(item);
           txnsByItem[item].forEach((tx) => {
             if (tx.type === "SALE") {
+              const isNonCashSale = !tx.tafsil || !tx.tafsil.includes("نقد");
+              if (protectNonCash && isNonCashSale) return;
+              
               if (isExempt) exemptSales.push(tx);
               else taxableSales.push(tx);
             }
@@ -1094,18 +1098,20 @@ export function GlobalOptimizer({
 
             <div className="mt-4 pt-4 border-t border-indigo-100/50 flex flex-col gap-1.5">
               <label className="text-xs font-bold text-indigo-700">
-                دقت رند کردن مبالغ نرخ فروش
+                تنظیمات رند کردن نرخ‌های فروش
               </label>
               <select
                 value={roundingLevel}
                 onChange={(e) => setRoundingLevel(Number(e.target.value))}
                 className="p-2 border border-indigo-200 rounded-lg text-xs font-bold focus:outline-none focus:border-indigo-500"
               >
-                <option value={1}>دقیق (بدون رند کردن)</option>
-                <option value={10}>رند به دهگان</option>
-                <option value={100}>رند به صدگان</option>
-                <option value={1000}>رند به هزارگان (۱,۰۰۰)</option>
-                <option value={10000}>رند به ده هزارگان (۱۰,۰۰۰)</option>
+                <option value={1}>دقیق (اعدادی مثل ۱۵۴۰ تغییر نکنند)</option>
+                <option value={10}>رند به دهگان (مثل ۱۵۴۰ بشود ۱۵۰۰ یا ۱۵۵۰)</option>
+                <option value={100}>رند به صدگان (۲ صفر - ۵,۹۸۰,۶۰۰ بشود ۵,۹۸۰,۶۰۰)</option>
+                <option value={1000}>رند به هزارگان (۳ صفر - ۵,۹۸۰,۶۰۰ بشود ۵,۹۸۱,۰۰۰)</option>
+                <option value={10000}>رند به ده هزارگان (۴ صفر - ۵,۹۸۰,۶۰۰ بشود ۵,۹۸۰,۰۰۰)</option>
+                <option value={100000}>رند به صد هزارگان (۵ صفر)</option>
+                <option value={1000000}>رند به میلیون (۶ صفر)</option>
               </select>
             </div>
           </div>

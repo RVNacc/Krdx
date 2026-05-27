@@ -189,6 +189,7 @@ export function ReportView({
       const rows = [
         [
           "کالا",
+          "کد کالا",
           "تاریخ",
           "تراکنش",
           "مشتری/تفصیل",
@@ -218,6 +219,7 @@ export function ReportView({
 
         rows.push([
           e.itemName,
+          e.itemCode || "-",
           typeof e.date === "string"
             ? e.date
             : e.date.toLocaleDateString("fa-IR"),
@@ -482,6 +484,7 @@ export function ReportView({
                 const rows = [
                   [
                     "نام کالا",
+                    "کد کالا",
                     "موجودی اولیه",
                     "ارزش اولیه",
                     "تعداد خرید",
@@ -498,6 +501,7 @@ export function ReportView({
                 summaries.forEach((s) => {
                   rows.push([
                     s.itemName,
+                    s.itemCode || "-",
                     String(s.initialQuantity),
                     String(s.initialValue),
                     String(s.purchasedQuantity),
@@ -524,7 +528,8 @@ export function ReportView({
                 const rows = [
                   [
                     "نام کالا",
-                    "شناسه",
+                    "کد کالا",
+                    "شماره تراکنش",
                     "تاریخ",
                     "تفصیل/خریدار",
                     "تعداد فروش",
@@ -540,6 +545,7 @@ export function ReportView({
                     if (tx.type === "SALE") {
                       rows.push([
                         tx.itemName,
+                        tx.itemCode || "-",
                         `#${tx.id.split("_")[1] || tx.id}`,
                         typeof tx.date === "string"
                           ? tx.date

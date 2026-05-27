@@ -163,6 +163,10 @@ export function calculateKardex(
     const history = kardexByItem[item];
     const summary = summariesMap.get(item)!;
 
+    if (txn.itemCode && !summary.itemCode) {
+        summary.itemCode = txn.itemCode;
+    }
+
     if (txn.unit && !summary.unit) {
        summary.unit = txn.unit;
     }

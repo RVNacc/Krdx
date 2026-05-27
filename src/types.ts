@@ -7,6 +7,7 @@ export interface RawRow {
 export interface ColumnMapping {
   date: string;
   itemName: string;
+  itemCode?: string;
   quantity: string;
   price: string;
   priceType: 'UNIT' | 'TOTAL';
@@ -29,6 +30,7 @@ export interface ProcessedTransaction {
   date: Date | string;
   timestamp: number;
   itemName: string;
+  itemCode?: string;
   type: TransactionType;
   quantity: number;
   unitPrice: number;
@@ -51,6 +53,7 @@ export interface KardexEntry extends ProcessedTransaction {
 
 export interface ItemSummary {
   itemName: string;
+  itemCode?: string;
   initialQuantity: number;
   initialValue: number;
   purchasedQuantity: number;

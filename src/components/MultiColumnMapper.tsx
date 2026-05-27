@@ -19,7 +19,8 @@ export function MultiColumnMapper({ files, onMappingsComplete }: MultiColumnMapp
     columns.forEach(col => {
       const norm = normalize(col);
       if (!defaultMapping.date && (norm.includes('تاریخ') || norm.includes('date') || norm.includes('زمان'))) defaultMapping.date = col;
-      if (!defaultMapping.itemName && (norm.includes('کالا') || norm.includes('شرح') || norm.includes('item') || norm.includes('محصول'))) defaultMapping.itemName = col;
+      if (!defaultMapping.itemName && (norm.includes('نام کالا') || norm.includes('شرح') || norm.includes('item') || norm.includes('محصول') || norm.includes('کالا'))) defaultMapping.itemName = col;
+      if (!defaultMapping.itemCode && (norm.includes('کد') || norm.includes('code') || norm.includes('شناسه'))) defaultMapping.itemCode = col;
       if (!defaultMapping.quantity && (norm.includes('تعداد') || norm.includes('مقدار') || norm.includes('وزن') || norm.includes('qty'))) defaultMapping.quantity = col;
       if (!defaultMapping.price && (norm.includes('مبلغ') || norm.includes('فی') || norm.includes('نرخ') || norm.includes('قیمت') || norm.includes('ارزش') || norm.includes('بها'))) defaultMapping.price = col;
       if (!defaultMapping.tafsil && (norm.includes('تفصیل') || norm.includes('خریدار') || norm.includes('مشتری') || norm.includes('بابت') || norm.includes('tafsil') || norm.includes('customer'))) defaultMapping.tafsil = col;
@@ -120,7 +121,8 @@ export function MultiColumnMapper({ files, onMappingsComplete }: MultiColumnMapp
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
           {renderSelect('date', 'ستون تاریخ عملیات')}
-          {renderSelect('itemName', 'ستون نام / کد کالا')}
+          {renderSelect('itemName', 'ستون نام کالا')}
+          {renderSelect('itemCode', 'ستون کد کالا (اختیاری)')}
           {renderSelect('quantity', 'ستون تعداد / مقدار')}
           {renderSelect('unit', 'ستون واحد سنجش (اختیاری)')}
           {renderSelect('tafsil', 'ستون تفصیل / مشتری و خریدار (اختیاری)')}

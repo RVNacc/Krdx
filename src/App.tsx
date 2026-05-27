@@ -60,6 +60,7 @@ export default function App() {
 
         const dateCol = mapping.date;
         const itemCol = mapping.itemName;
+        const itemCodeCol = mapping.itemCode;
         const qtyCol = mapping.quantity;
         const priceCol = mapping.price;
         const priceType = mapping.priceType || 'TOTAL';
@@ -85,6 +86,7 @@ export default function App() {
 
         // Extract optional columns
         const tafsilValue = tafsilCol ? String(row[tafsilCol] || '').trim() : undefined;
+        const itemCodeValue = itemCodeCol ? String(row[itemCodeCol] || '').trim() : undefined;
         const unitValue = unitCol ? String(row[unitCol] || '').trim() : undefined;
         
         let customTaxValue: number | undefined = undefined;
@@ -104,6 +106,7 @@ export default function App() {
             date: pDate,
             timestamp: pDate.getTime(),
             itemName: String(row[itemCol]).trim(),
+            itemCode: itemCodeValue,
             type: file.type,
             quantity: Math.abs(qty),
             unitPrice: Math.abs(unitPrice),
